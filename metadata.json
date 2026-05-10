@@ -1,0 +1,6 @@
+{
+  "name": "FilmHome",
+  "description": "A personalized movie and TV show discovery platform with AI-powered recommendations, watchlists, and community ratings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
