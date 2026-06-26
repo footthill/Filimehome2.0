@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Star, ChevronLeft, Bookmark, Play, Plus, Check } from 'lucide-react';
 import { Movie } from '../types';
 import { cn } from '../lib/utils';
+import { fetchSimilar } from '../services/tmdb';
+import { MovieCard } from './MovieCard';
 
 interface MovieDetailProps {
   movies: Movie[];
@@ -17,6 +19,17 @@ export function MovieDetail({ movies, watchlist, userRatings, onToggleWatchlist,
   const { id } = useParams();
   const navigate = useNavigate();
   const movie = movies.find(m => m.id === id);
+  const [similarMovies, setSimilarMovies] = useState<Movie[]>([]);
+
+  useEffect(() => {
+    if (movie) {
+      const loadSimilar = async () => {
+        const similar = await fetchSimilar(movie.id, movie.type);
+        setSimilarMovies(similar);
+      };
+      loadSimilar();
+    }
+  }, [movie]);
 
   if (!movie) return <div>Movie not found</div>;
 
@@ -107,11 +120,26 @@ export function MovieDetail({ movies, watchlist, userRatings, onToggleWatchlist,
             <div className="flex gap-3 overflow-x-auto no-scrollbar pb-4">
               {movie.cast.map((actor, idx) => (
                 <div key={idx} className="flex-shrink-0 px-4 py-3 rounded-2xl bg-white/5 border border-white/5 backdrop-blur-md">
-                  <span className="text-sm font-medium whitespace-nowrap">{actor}</span>
+                   <span className="text-sm font-medium whitespace-nowrap">{actor}</span>
                 </div>
               ))}
             </div>
           </div>
+
+          {similarMovies.length > 0 && (
+            <div className="space-y-6 pt-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black uppercase italic tracking-tighter">Similar to this {movie.type}</h3>
+              </div>
+              <div className="flex gap-4 overflow-x-auto no-scrollbar pb-6 -mx-2 px-2">
+                {similarMovies.map(similar => (
+                  <div key={similar.id} className="w-32 flex-shrink-0">
+                    <MovieCard movie={similar} variant="compact" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
     </div>

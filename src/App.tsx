@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search as SearchIcon, Bell, Star, Film, Sparkles, Plus, Loader2, Bookmark, Menu, Share2, Play, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Movie } from './types';
@@ -9,7 +9,7 @@ import { MovieCard } from './components/MovieCard';
 import { MovieDetail } from './components/MovieDetail';
 import { Sidebar } from './components/Sidebar';
 import { cn } from './lib/utils';
-import { getRecommendations, searchMoviesAI } from './services/ai';
+import { getRecommendations, searchMoviesAI, chatWithAI } from './services/ai';
 import { fetchTrending, fetchByType, searchMovies } from './services/tmdb';
 
 export default function App() {
@@ -109,10 +109,144 @@ export default function App() {
 }
 
 function ChatRedirect() {
+  const [messages, setMessages] = useState<Array<{ role: 'user' | 'model'; text: string; time: string }>>([
+    {
+      role: 'model',
+      text: "👋 Hello! Welcome to FilmHome's WhatsApp Cinema assistant. I am your movie Genie! 🎬\n\nAsk me anything! For example:\n🍿 'Suggest a steamy romance movie'\n🌟 'Where can I find Abasobanuzi voiceovers?'\n🔥 'What are the top action seasons?'",
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+  ]);
+  const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    window.location.href = "https://wa.me/";
-  }, []);
-  return <div className="flex items-center justify-center h-screen">Redirecting to WhatsApp...</div>;
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    const userMsg = input;
+    setInput("");
+    
+    setMessages(prev => [...prev, {
+      role: 'user',
+      text: userMsg,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }]);
+
+    setIsTyping(true);
+
+    // Call real Gemini API
+    const contextMessages = messages.map(m => ({ role: m.role, text: m.text }));
+    contextMessages.push({ role: 'user', text: userMsg });
+
+    const reply = await chatWithAI(contextMessages);
+    
+    setIsTyping(false);
+    setMessages(prev => [...prev, {
+      role: 'model',
+      text: reply,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }]);
+  };
+
+  return (
+    <div className="flex flex-col h-screen max-h-screen bg-[#0b141a] text-white pb-20 select-none">
+      {/* WhatsApp Custom Header */}
+      <div className="bg-[#075e54] px-4 pt-12 pb-3 flex items-center justify-between shadow-md">
+        <div className="flex items-center gap-3">
+          <Link to="/" className="p-1 hover:bg-black/10 rounded-full transition-colors">
+            <ChevronLeft className="h-6 w-6 text-white" />
+          </Link>
+          <div className="relative">
+            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center border border-white/10 overflow-hidden font-black text-yellow-500 fill-current">
+              🍿
+            </div>
+            <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#075e54] rounded-full" />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm text-white">FilmHome Genie</h3>
+            <p className="text-[10px] text-green-300 font-medium">
+              {isTyping ? "typing..." : "online"}
+            </p>
+          </div>
+        </div>
+        
+        {/* Safe External Redirect Button */}
+        <a 
+          href="https://wa.me/250700000000"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#25d366] hover:bg-[#20ba5a] active:scale-95 transition-all rounded-full text-[10px] font-black uppercase text-black"
+        >
+          Open App
+        </a>
+      </div>
+
+      {/* WhatsApp Chat Bubbles Wrapper */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 no-scrollbar bg-cover bg-center bg-opacity-[0.04]" style={{ backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')" }}>
+        {messages.map((m, idx) => {
+          const isMe = m.role === 'user';
+          return (
+            <div 
+              key={idx} 
+              className={cn(
+                "flex w-full mb-1",
+                isMe ? "justify-end" : "justify-start"
+              )}
+            >
+              <div 
+                className={cn(
+                  "max-w-[85%] rounded-2xl px-4 py-2.5 relative shadow-sm text-sm whitespace-pre-wrap leading-relaxed",
+                  isMe 
+                    ? "bg-[#056162] text-white rounded-tr-none" 
+                    : "bg-[#202c33] text-white rounded-tl-none border border-white/5"
+                )}
+              >
+                <p className="text-sm font-medium">{m.text}</p>
+                <div className="text-[9px] text-white/40 text-right mt-1.5 font-bold">
+                  {m.time}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {isTyping && (
+          <div className="flex w-full justify-start">
+            <div className="bg-[#202c33] text-white rounded-2xl rounded-tl-none px-4 py-3 border border-white/5 shadow-sm">
+              <div className="flex gap-1.5 items-center justify-center">
+                <span className="w-2 h-2 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Form */}
+      <form onSubmit={handleSend} className="p-3 bg-[#111b21] flex items-center gap-2 border-t border-white/5">
+        <input 
+          type="text"
+          placeholder="Type a message..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          className="flex-1 h-11 bg-[#2a3942] focus:outline-none rounded-full px-5 text-sm placeholder:text-white/30 text-white font-medium"
+        />
+        <button 
+          type="submit" 
+          disabled={!input.trim()}
+          className="h-11 w-11 rounded-full bg-[#00a884] hover:bg-[#008f72] active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center cursor-pointer text-white"
+        >
+          <Play className="h-5 w-5 fill-current ml-0.5" />
+        </button>
+      </form>
+    </div>
+  );
 }
 
 function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }: { 
@@ -153,13 +287,13 @@ function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }:
       <div className="mt-28 space-y-10">
         {/* Top Feature Sliders (The big vertical ones) */}
         <section className="px-6 grid grid-cols-2 gap-4">
-           <MovieCard movie={movies[3]} variant="vertical" />
-           <MovieCard movie={movies[4]} variant="vertical" />
+           {movies[3] && <MovieCard movie={movies[3]} variant="vertical" />}
+           {movies[4] && <MovieCard movie={movies[4]} variant="vertical" />}
         </section>
 
         {/* Large Horizontal Highlight */}
         <section className="px-6">
-           <MovieCard movie={movies[4]} variant="horizontal" />
+           {movies[4] && <MovieCard movie={movies[4]} variant="horizontal" />}
         </section>
 
         {/* AI Recommendations */}
@@ -234,13 +368,13 @@ function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }:
 
         {/* Another Horizontal card */}
         <section className="px-6">
-           <MovieCard movie={movies[7]} variant="horizontal" />
+           {movies[7] && <MovieCard movie={movies[7]} variant="horizontal" />}
         </section>
 
         {/* Small vertical cards grid */}
         <section className="px-6 grid grid-cols-2 gap-4">
-           <MovieCard movie={movies[5]} variant="vertical" />
-           <MovieCard movie={movies[6]} variant="vertical" />
+           {movies[5] && <MovieCard movie={movies[5]} variant="vertical" />}
+           {movies[6] && <MovieCard movie={movies[6]} variant="vertical" />}
         </section>
       </div>
     </div>
@@ -248,10 +382,29 @@ function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }:
 }
 
 function SearchView({ allMovies }: { allMovies: Movie[] }) {
+  const [searchParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const [aiResults, setAiResults] = useState<any[]>([]);
   const [tmdbResults, setTmdbResults] = useState<Movie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    const genreParam = searchParams.get('genre');
+    if (genreParam) {
+      setQuery(genreParam);
+      const runSearch = async () => {
+        setIsSearching(true);
+        const [aiRes, tmdbRes] = await Promise.all([
+          searchMoviesAI(genreParam),
+          searchMovies(genreParam)
+        ]);
+        setAiResults(aiRes);
+        setTmdbResults(tmdbRes);
+        setIsSearching(false);
+      };
+      runSearch();
+    }
+  }, [searchParams]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();

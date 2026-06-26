@@ -1,6 +1,6 @@
 import React from 'react';
 import { Home, Compass, MessageCircle, Zap, Smile, BookOpen, Skull, Map, Cpu, X } from 'lucide-react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 
 interface SidebarProps {
@@ -9,6 +9,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
+  const navigate = useNavigate();
   const mainItems = [
     { icon: Home, label: 'Home', path: '/' },
     { icon: Compass, label: 'Explore', path: '/search' },
@@ -81,6 +82,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 {genres.map((genre) => (
                   <button
                     key={genre.label}
+                    onClick={() => {
+                      navigate(`/search?genre=${genre.label.toUpperCase()}`);
+                      onClose();
+                    }}
                     className="flex w-full items-center justify-between py-2 text-sm font-bold text-gray-400 hover:text-white transition-colors"
                   >
                     <div className="flex items-center gap-4">
@@ -95,7 +100,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
           
           <div className="mt-auto pt-6 border-t border-white/5">
-             <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">© 2024 FilmHome</p>
+             <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">© {new Date().getFullYear()} FilmHome</p>
           </div>
         </div>
       </aside>

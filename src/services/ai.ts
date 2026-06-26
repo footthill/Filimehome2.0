@@ -1,11 +1,22 @@
 import { GoogleGenAI } from "@google/genai";
 import { Movie } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+function getAI(): GoogleGenAI {
+  if (!aiInstance) {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+      throw new Error("VITE_GEMINI_API_KEY is not configured.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+}
 
 export async function getRecommendations(watchlist: string[], ratings: Record<string, number>, allMovies: Movie[]): Promise<string[]> {
   if (watchlist.length === 0 && Object.keys(ratings).length === 0) {
-    return [];
+    return ["Dune: Part Two", "Furiosa: A Mad Max Saga", "Shogun"];
   }
 
   const watchlistTitles = watchlist.map(id => allMovies.find(m => m.id === id)?.title).filter(Boolean);
@@ -21,8 +32,9 @@ My Ratings: ${ratedTitles.join(", ")}
 Return only the titles of 3 movies or TV shows as a JSON array of strings.`;
 
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -32,7 +44,7 @@ Return only the titles of 3 movies or TV shows as a JSON array of strings.`;
     return JSON.parse(response.text || "[]");
   } catch (error) {
     console.error("AI Error:", error);
-    return [];
+    return ["Dune: Part Two", "Furiosa: A Mad Max Saga", "Shogun"];
   }
 }
 
@@ -42,8 +54,9 @@ Include: title, type (movie/tv), year, description, genres.
 Return as a JSON array of objects.`;
 
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -56,3 +69,25 @@ Return as a JSON array of objects.`;
     return [];
   }
 }
+
+export async function chatWithAI(messages: { role: 'user' | 'model', text: string }[]): Promise<string> {
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: messages.map(m => ({
+        role: m.role,
+        parts: [{ text: m.text }]
+      })),
+      config: {
+        systemInstruction: "You are the FilmHome Genie, an elegant, passionate, and cinema-obsessed movie assistant. You are chatting over a WhatsApp-style integration. Help the user find the perfect movie, translate titles, find local Abasobanuzi voiceover details, or suggest films. Keep your answers engaging, warm, helpful, and concise (under 3-4 sentences total). Use some emojis to make it feel like WhatsApp.",
+      }
+    });
+
+    return response.text || "I'm having trouble getting the perfect movie for you right now. Try again!";
+  } catch (error) {
+    console.error("AI Chat Error:", error);
+    return "I had trouble tapping into the cinematic frequencies. What film or genre can I help you find? 🎬";
+  }
+}
+

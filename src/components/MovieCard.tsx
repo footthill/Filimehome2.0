@@ -57,7 +57,7 @@ export function MovieCard({ movie, variant = 'vertical' }: MovieCardProps) {
             <h4 className="text-xs font-bold text-white line-clamp-1">{movie.title}</h4>
             <div className="flex items-center gap-2 text-[10px] text-gray-500 font-medium">
               <span>a day ago</span>
-              <span className="text-white font-bold">{movie.type === 'tv' ? 'Koc...' : 'Ro...'}</span>
+              <span className="text-white font-bold">{movie.type === 'tv' ? 'TV Show' : 'Movie'}</span>
             </div>
           </div>
         </motion.div>

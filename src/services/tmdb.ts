@@ -1,11 +1,9 @@
-const TMDB_API_KEY = process.env.TMDB_API_KEY;
-const BASE_URL = 'https://api.themoviedb.org/3';
+const BASE_URL = '/api/tmdb';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
 
 export async function fetchTrending() {
-  if (!TMDB_API_KEY) return [];
   try {
-    const response = await fetch(`${BASE_URL}/trending/all/day?api_key=${TMDB_API_KEY}`);
+    const response = await fetch(`${BASE_URL}/trending/all/day`);
     const data = await response.json();
     return (data.results || []).map(formatMovie);
   } catch (err) {
@@ -15,9 +13,8 @@ export async function fetchTrending() {
 }
 
 export async function fetchByType(type: 'movie' | 'tv') {
-  if (!TMDB_API_KEY) return [];
   try {
-    const response = await fetch(`${BASE_URL}/discover/${type}?api_key=${TMDB_API_KEY}&sort_by=popularity.desc`);
+    const response = await fetch(`${BASE_URL}/discover/${type}?sort_by=popularity.desc`);
     const data = await response.json();
     return (data.results || []).map((m: any) => formatMovie({ ...m, media_type: type }));
   } catch (err) {
@@ -27,11 +24,21 @@ export async function fetchByType(type: 'movie' | 'tv') {
 }
 
 export async function searchMovies(query: string) {
-  if (!TMDB_API_KEY) return [];
   try {
-    const response = await fetch(`${BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}`);
+    const response = await fetch(`${BASE_URL}/search/multi?query=${encodeURIComponent(query)}`);
     const data = await response.json();
     return (data.results || []).map(formatMovie);
+  } catch (err) {
+    console.error('TMDB Error:', err);
+    return [];
+  }
+}
+
+export async function fetchSimilar(id: string, type: 'movie' | 'tv') {
+  try {
+    const response = await fetch(`${BASE_URL}/${type}/${id}/similar`);
+    const data = await response.json();
+    return (data.results || []).map((m: any) => formatMovie({ ...m, media_type: type }));
   } catch (err) {
     console.error('TMDB Error:', err);
     return [];
