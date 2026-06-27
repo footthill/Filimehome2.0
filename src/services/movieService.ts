@@ -19,12 +19,13 @@ export async function fetchTrending(): Promise<Movie[]> {
   const { data, error } = await supabase
     .from('moviesv2')
     .select('*')
-    .limit(20);
+    .limit(3);
   
   if (error) {
     console.error('Supabase Error fetchTrending:', JSON.stringify(error, null, 2));
     return [];
   }
+  console.log('Supabase Data fetchTrending:', data);
   return (data || []).map(mapMovie);
 }
 
