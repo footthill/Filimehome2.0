@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+// Force a commit
 import { BrowserRouter as Router, Routes, Route, Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search as SearchIcon, Bell, Star, Film, Sparkles, Plus, Loader2, Bookmark, Menu, Share2, Play, ChevronRight, ChevronLeft } from 'lucide-react';
