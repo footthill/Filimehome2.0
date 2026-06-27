@@ -4,22 +4,21 @@ import { motion } from 'motion/react';
 import { Star, ChevronLeft, Bookmark, Play, Plus, Check } from 'lucide-react';
 import { Movie } from '../types';
 import { cn } from '../lib/utils';
-import { fetchSimilar } from '../services/tmdb';
+import { fetchSimilar } from '../services/movieService';
 import { MovieCard } from './MovieCard';
 
 interface MovieDetailProps {
   movies: Movie[];
   watchlist: string[];
-  userRatings: Record<string, number>;
   onToggleWatchlist: (id: string) => void;
-  onRate: (id: string, rating: number) => void;
 }
 
-export function MovieDetail({ movies, watchlist, userRatings, onToggleWatchlist, onRate }: MovieDetailProps) {
+export function MovieDetail({ movies, watchlist, onToggleWatchlist }: MovieDetailProps) {
   const { id } = useParams();
   const navigate = useNavigate();
   const movie = movies.find(m => m.id === id);
   const [similarMovies, setSimilarMovies] = useState<Movie[]>([]);
+  const [showVideo, setShowVideo] = useState(false);
 
   useEffect(() => {
     if (movie) {
@@ -34,13 +33,23 @@ export function MovieDetail({ movies, watchlist, userRatings, onToggleWatchlist,
   if (!movie) return <div>Movie not found</div>;
 
   const isInWatchlist = watchlist.includes(movie.id);
-  const userRating = userRatings[movie.id] || 0;
 
   return (
     <div className="min-h-screen pb-32">
+      {showVideo && (
+        <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+          <button 
+            onClick={() => setShowVideo(false)} 
+            className="absolute top-4 right-4 z-50 bg-white/10 text-white px-4 py-2 rounded-full backdrop-blur-md"
+          >
+            Close
+          </button>
+          <video src={movie.video_url} controls className="w-full max-h-screen" autoPlay />
+        </div>
+      )}
       <div className="relative h-[60vh] w-full">
         <img 
-          src={movie.backdropUrl} 
+          src={movie.image} 
           alt={movie.title} 
           className="h-full w-full object-cover"
         />
@@ -50,7 +59,7 @@ export function MovieDetail({ movies, watchlist, userRatings, onToggleWatchlist,
           onClick={() => navigate(-1)}
           className="absolute top-12 left-6 h-12 w-12 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-md border border-white/10"
         >
-          <ChevronLeft className="h-6 w-6 text-white" />
+          <ChevronLeft className="h-6 w-6" />
         </button>
       </div>
 
@@ -63,11 +72,7 @@ export function MovieDetail({ movies, watchlist, userRatings, onToggleWatchlist,
           <div className="space-y-2">
             <h1 className="text-4xl font-black tracking-tight leading-tight">{movie.title}</h1>
             <div className="flex items-center gap-4 text-sm text-white/60">
-              <span className="flex items-center gap-1">
-                <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                {movie.rating}
-              </span>
-              <span>{movie.year}</span>
+              <span>{movie.release_date}</span>
               <span className="uppercase tracking-widest text-[10px] px-2 py-1 rounded-full bg-white/10 border border-white/10">
                 {movie.type}
               </span>
@@ -75,7 +80,10 @@ export function MovieDetail({ movies, watchlist, userRatings, onToggleWatchlist,
           </div>
 
           <div className="flex gap-3">
-            <button className="flex-1 h-14 flex items-center justify-center gap-2 rounded-2xl bg-red-600 font-bold text-white shadow-xl shadow-red-600/20 active:scale-95 transition-transform">
+            <button 
+              onClick={() => setShowVideo(true)}
+              className="flex-1 h-14 flex items-center justify-center gap-2 rounded-2xl bg-red-600 font-bold text-white shadow-xl shadow-red-600/20 active:scale-95 transition-transform"
+            >
               <Play className="h-5 w-5 fill-current" />
               Watch Now
             </button>
@@ -88,42 +96,6 @@ export function MovieDetail({ movies, watchlist, userRatings, onToggleWatchlist,
             >
               {isInWatchlist ? <Check className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
             </button>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-xs uppercase tracking-[0.2em] font-semibold text-white/40">Description</h3>
-            <p className="text-white/80 leading-relaxed text-lg">{movie.description}</p>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-xs uppercase tracking-[0.2em] font-semibold text-white/40">Rate this {movie.type}</h3>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  onClick={() => onRate(movie.id, star)}
-                  className="p-1 transition-transform active:scale-75"
-                >
-                  <Star 
-                    className={cn(
-                      "h-8 w-8 transition-colors",
-                      star <= userRating ? "fill-yellow-500 text-yellow-500" : "text-white/20"
-                    )}
-                  />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-xs uppercase tracking-[0.2em] font-semibold text-white/40">Cast</h3>
-            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-4">
-              {movie.cast.map((actor, idx) => (
-                <div key={idx} className="flex-shrink-0 px-4 py-3 rounded-2xl bg-white/5 border border-white/5 backdrop-blur-md">
-                   <span className="text-sm font-medium whitespace-nowrap">{actor}</span>
-                </div>
-              ))}
-            </div>
           </div>
 
           {similarMovies.length > 0 && (

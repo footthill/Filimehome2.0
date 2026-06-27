@@ -10,7 +10,7 @@ import { MovieDetail } from './components/MovieDetail';
 import { Sidebar } from './components/Sidebar';
 import { cn } from './lib/utils';
 import { getRecommendations, searchMoviesAI, chatWithAI } from './services/ai';
-import { fetchTrending, fetchByType, searchMovies } from './services/tmdb';
+import { fetchTrending, fetchByType, searchMovies } from './services/movieService';
 
 export default function App() {
   const [movies, setMovies] = useState<Movie[]>(INITIAL_MOVIES);
@@ -94,9 +94,7 @@ export default function App() {
             <MovieDetail 
               movies={movies} 
               watchlist={watchlist} 
-              userRatings={userRatings}
               onToggleWatchlist={toggleWatchlist} 
-              onRate={rateMovie} 
             />
           } />
           <Route path="/profile" element={<ProfileView />} />
@@ -385,7 +383,6 @@ function SearchView({ allMovies }: { allMovies: Movie[] }) {
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const [aiResults, setAiResults] = useState<any[]>([]);
-  const [tmdbResults, setTmdbResults] = useState<Movie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
@@ -394,12 +391,8 @@ function SearchView({ allMovies }: { allMovies: Movie[] }) {
       setQuery(genreParam);
       const runSearch = async () => {
         setIsSearching(true);
-        const [aiRes, tmdbRes] = await Promise.all([
-          searchMoviesAI(genreParam),
-          searchMovies(genreParam)
-        ]);
+        const aiRes = await searchMoviesAI(genreParam);
         setAiResults(aiRes);
-        setTmdbResults(tmdbRes);
         setIsSearching(false);
       };
       runSearch();
@@ -411,14 +404,10 @@ function SearchView({ allMovies }: { allMovies: Movie[] }) {
     if (!query) return;
     setIsSearching(true);
     
-    // Parallel search: AI + TMDB
-    const [aiRes, tmdbRes] = await Promise.all([
-      searchMoviesAI(query),
-      searchMovies(query)
-    ]);
+    // Parallel search: AI
+    const aiRes = await searchMoviesAI(query);
     
     setAiResults(aiRes);
-    setTmdbResults(tmdbRes);
     setIsSearching(false);
   };
 
@@ -446,19 +435,6 @@ function SearchView({ allMovies }: { allMovies: Movie[] }) {
       </form>
 
       <div className="space-y-8">
-        {tmdbResults.length > 0 && query && (
-          <section className="space-y-4">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-white/40">From the Global Vault</h3>
-            <div className="grid grid-cols-2 gap-4">
-              {tmdbResults.map(movie => (
-                <div key={movie.id}>
-                  <MovieCard movie={movie} />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
         {query && (
           <section className="space-y-4">
             <div className="flex items-center justify-between">

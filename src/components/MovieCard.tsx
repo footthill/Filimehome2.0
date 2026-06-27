@@ -20,7 +20,7 @@ export function MovieCard({ movie, variant = 'vertical' }: MovieCardProps) {
           className="group relative h-48 w-full overflow-hidden rounded-3xl bg-[#1a1a1a] border border-white/5"
         >
           <img
-            src={movie.backdropUrl || movie.posterUrl}
+            src={movie.image || movie.poster}
             alt={movie.title}
             className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
@@ -47,7 +47,7 @@ export function MovieCard({ movie, variant = 'vertical' }: MovieCardProps) {
         >
           <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-[#1a1a1a]">
             <img
-              src={movie.posterUrl}
+              src={movie.poster}
               alt={movie.title}
               className="h-full w-full object-cover"
             />
@@ -73,7 +73,7 @@ export function MovieCard({ movie, variant = 'vertical' }: MovieCardProps) {
         className="group relative aspect-[3/4] overflow-hidden rounded-3xl bg-[#1a1a1a] border border-white/5"
       >
         <img
-          src={movie.posterUrl}
+          src={movie.poster}
           alt={movie.title}
           className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
         />

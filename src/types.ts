@@ -1,15 +1,15 @@
 export interface Movie {
   id: string;
   title: string;
-  type: 'movie' | 'tv';
-  year: number;
-  rating: number; // average rating 0-10
-  userRating?: number; // 0-5 stars
-  posterUrl: string;
-  backdropUrl: string;
-  description: string;
+  poster: string;
+  image: string;
   genres: string[];
-  cast: string[];
+  narrator: string;
+  country: string;
+  release_date: string;
+  modifiedAt: string;
+  video_url: string;
+  type: 'movie' | 'tv';
 }
 
 export interface UserData {
