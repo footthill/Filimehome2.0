@@ -27,6 +27,7 @@ create policy legacy_open_library on public.user_library for all to anon, authen
 create policy legacy_open_history on public.watch_history for all to anon, authenticated using (true) with check (true);
 create policy legacy_open_categories on public.categories for all to anon, authenticated using (true) with check (true);
 create policy legacy_open_storage on storage.objects for all to anon, authenticated using (true) with check (true);
+grant select on public.profiles, public.user_library, public.watch_history to anon;
 insert into auth.users values ('00000000-0000-0000-0000-000000000001'), ('00000000-0000-0000-0000-000000000002');
 insert into public.moviesv2 (id, title, published, streaming_authorized) values
   ('published', 'Policy test fixture', true, true), ('draft', 'Unpublished fixture', false, false);
