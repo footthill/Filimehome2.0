@@ -67,18 +67,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { void reload(); }, [reload]);
   useEffect(() => {
-    if (!supabase) { setAuthReady(true); return; }
+    const client = supabase;
+    if (!client) { setAuthReady(true); return; }
     let active = true;
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data } = client.auth.onAuthStateChange((_event, next) => {
       if (active) { sessionRef.current = next; setSession(next); setAuthReady(true); }
     });
-    supabase.auth.getSession().then(({ data, error }) => {
+    client.auth.getSession().then(({ data, error }) => {
       if (active) { sessionRef.current = data.session; setSession(data.session); setAuthReady(true); if (error) setLibraryError(error.message); }
     }).catch(() => { if (active) { setAuthReady(true); setLibraryError('Unable to restore session'); } });
     const appState = AppState.addEventListener('change', state => {
-      if (state === 'active') supabase.auth.startAutoRefresh(); else supabase.auth.stopAutoRefresh();
+      if (state === 'active') client.auth.startAutoRefresh(); else client.auth.stopAutoRefresh();
     });
-    return () => { active = false; data.subscription.unsubscribe(); appState.remove(); supabase.auth.stopAutoRefresh(); };
+    return () => { active = false; data.subscription.unsubscribe(); appState.remove(); client.auth.stopAutoRefresh(); };
   }, []);
 
   useEffect(() => {
