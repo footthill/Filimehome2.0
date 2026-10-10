@@ -1,4 +1,6 @@
 """Verify a compiled preview APK without requiring backend credentials."""
+import argparse
+import json
 import re
 import subprocess
 import sys
@@ -7,13 +9,23 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 PACKAGE = 'com.footthill.filimehome'
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('apk', type=Path)
+parser.add_argument('--previous-apk', type=Path)
+parser.add_argument('--expected-sdk', type=int)
+parser.add_argument('--expected-version-code', type=int)
+parser.add_argument('--verify-fresh-install', action='store_true', help='Emulator-only uninstall/reinstall check')
+args = parser.parse_args()
 
 
 def adb(*args, check=True, timeout=90):
     result = subprocess.run(['adb', *args], capture_output=True, text=True, timeout=timeout)
+    if args and args[0] in ('install', 'uninstall'):
+        with Path('android-install.log').open('a') as log:
+            log.write('adb ' + ' '.join(args) + '\n' + result.stdout + result.stderr + f'\nExit code: {result.returncode}\n')
     if check and result.returncode:
         raise RuntimeError(result.stdout + result.stderr)
-    return result.stdout
+    return result.stdout + result.stderr
 
 
 def ui():
@@ -59,8 +71,33 @@ def tap(label):
 
 
 try:
-    print(adb('install', '-r', sys.argv[1], timeout=300), flush=True)
     adb('logcat', '-c')
+    properties = {key: adb('shell', 'getprop', key).strip() for key in [
+        'ro.build.version.sdk', 'ro.product.model', 'ro.product.cpu.abilist',
+        'ro.build.fingerprint', 'ro.kernel.qemu',
+    ]}
+    properties['page_size'] = adb('shell', 'getconf', 'PAGESIZE').strip()
+    properties['data_free_space'] = adb('shell', 'df', '-h', '/data').strip()
+    Path('android-device.json').write_text(json.dumps(properties, indent=2))
+    print('Android emulator properties:', json.dumps(properties), flush=True)
+    if args.expected_sdk is not None:
+        assert properties['ro.build.version.sdk'] == str(args.expected_sdk), 'Wrong Android API level'
+    if args.verify_fresh_install:
+        assert properties['ro.kernel.qemu'] == '1', 'Uninstall check is only allowed on an emulator'
+    Path('android-package-before.log').write_text(adb('shell', 'dumpsys', 'package', PACKAGE, check=False))
+    if args.previous_apk and args.previous_apk.exists():
+        print('Diagnosing the original APK:', flush=True)
+        print(adb('install', '-r', '--no-streaming', str(args.previous_apk), check=False, timeout=600), flush=True)
+        Path('android-evidence/previous-install-logcat.txt').parent.mkdir(parents=True, exist_ok=True)
+        Path('android-evidence/previous-install-logcat.txt').write_text(adb('logcat', '-d', check=False))
+        Path('android-evidence/previous-package.txt').write_text(adb('shell', 'dumpsys', 'package', PACKAGE, check=False))
+    print('Installing the universal APK (normal package-manager security checks):', flush=True)
+    print(adb('install', '-r', '--no-streaming', str(args.apk), timeout=600), flush=True)
+    package = adb('shell', 'dumpsys', 'package', PACKAGE)
+    Path('android-package-after.log').write_text(package)
+    if args.expected_version_code is not None:
+        assert re.search(r'\bversionCode=' + str(args.expected_version_code) + r'\b', package), 'Wrong installed version'
+    adb('shell', 'am', 'force-stop', PACKAGE)
     print(adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity'), flush=True)
     wait_text('FilimeHome')
     if not adb('shell', 'pidof', PACKAGE).strip():
@@ -74,6 +111,14 @@ try:
     wait_text('Your collection')
     adb('shell', 'input', 'keyevent', '4')
     wait_text('Explore')
+    if args.verify_fresh_install:
+        # Disposable emulator only; no physical-device data is removed.
+        print(adb('uninstall', PACKAGE), flush=True)
+        print(adb('install', '--no-streaming', str(args.apk), timeout=600), flush=True)
+        print(adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity'), flush=True)
+        wait_text('FilimeHome')
+        assert adb('shell', 'pidof', PACKAGE).strip(), 'Fresh installation exited'
+        print('Android 15 fresh installation and cold launch passed.', flush=True)
     print('Android startup, tab navigation, profile and hardware back checks passed.', flush=True)
 finally:
     # Retain evidence even if a UI assertion or startup fails.
