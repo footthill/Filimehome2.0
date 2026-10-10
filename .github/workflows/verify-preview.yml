@@ -1,0 +1,53 @@
+name: Verify compiled preview APK
+on:
+  push:
+    branches: [development/android-filimehome-2]
+    paths: ['scripts/android_smoke.py', '.github/workflows/verify-preview.yml']
+  workflow_dispatch:
+    inputs:
+      artifact_run:
+        description: Completed APK build workflow run ID
+        required: true
+        default: '38068221949'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: Enable emulator hardware acceleration
+        run: sudo chmod a+rw /dev/kvm
+      - uses: actions/download-artifact@v4
+        with:
+          name: filimehome-preview-apk
+          run-id: ${{ github.event.inputs.artifact_run || '38068221949' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: preview-apk
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -skin 480x800 -memory 2048
+          script: python3 scripts/android_smoke.py preview-apk/app-release.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-ui-smoke-evidence
+          path: |
+            android-startup.log
+            android-activities.log
+            android-ui.xml
+            filimehome-startup.png
