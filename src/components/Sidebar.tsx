@@ -13,7 +13,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const mainItems = [
     { icon: Home, label: 'Home', path: '/' },
     { icon: Compass, label: 'Explore', path: '/search' },
-    { icon: MessageCircle, label: 'Chat on WhatsApp', path: '/chat', color: 'text-green-500' },
+    { icon: BookOpen, label: 'Movies', path: '/movies' },
+    { icon: Cpu, label: 'Series', path: '/series' },
+    { icon: MessageCircle, label: 'Movie assistant', path: '/chat', color: 'text-green-500' },
   ];
 
   const genres = [
@@ -49,7 +51,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                <div className="h-8 w-8 rounded-lg bg-yellow-500 flex items-center justify-center">
                  <Zap className="h-5 w-5 text-black fill-current" />
                </div>
-               <span className="text-xl font-black italic tracking-tighter uppercase">FilmHome</span>
+               <span className="text-xl font-black italic tracking-tighter uppercase">FilimeHome</span>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-white">
               <X className="h-6 w-6" />
@@ -107,3 +109,4 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     </>
   );
 }
+

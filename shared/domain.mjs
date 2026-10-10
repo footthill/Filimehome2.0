@@ -1,0 +1,58 @@
+export function secureUrl(value) {
+  if (typeof value !== 'string' || value.length > 4096) return '';
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : '';
+  } catch { return ''; }
+}
+
+export function normalizeMovie(row) {
+  const text = value => typeof value === 'string' ? value : '';
+  const source = row && typeof row === 'object' ? row : {};
+  return {
+    id: String(source.id ?? ''), title: text(source.title),
+    poster: secureUrl(source.poster), image: secureUrl(source.image || source.poster),
+    description: text(source.description),
+    genres: Array.isArray(source.genres) ? source.genres.filter(g => typeof g === 'string') : [],
+    narrator: text(source.narrator), country: text(source.country),
+    release_date: text(source.release_date), modifiedAt: text(source.modifiedAt),
+    type: source.type === 'tv' ? 'tv' : 'movie',
+    published: source.published === true,
+    featured: source.featured === true, trending: source.trending === true,
+    streaming_authorized: source.streaming_authorized === true,
+    offline_authorized: source.offline_authorized === true,
+    video_url: secureUrl(source.video_url), download_url: secureUrl(source.download_url),
+    subtitles: Array.isArray(source.subtitles) ? source.subtitles.map(s => ({
+      label: text(s?.label), language: text(s?.language), url: secureUrl(s?.url),
+    })).filter(s => s.url && s.label && s.language) : [],
+    qualities: Array.isArray(source.qualities) ? source.qualities.map(q => ({
+      label: text(q?.label), url: secureUrl(q?.url),
+    })).filter(q => q.url && q.label) : [],
+    episodes: Array.isArray(source.episodes) ? source.episodes.map(e => ({
+      id: text(e?.id), title: text(e?.title), season: Number(e?.season) || 1,
+      number: Number(e?.number) || 1, video_url: secureUrl(e?.video_url),
+      streaming_authorized: e?.streaming_authorized === true,
+    })).filter(e => e.id && e.title) : [],
+  };
+}
+
+export function filterCatalog(movies, query = '', genre = '', type = '') {
+  const term = query.trim().toLocaleLowerCase();
+  return movies.filter(m => (!type || m.type === type) && (!genre || m.genres.includes(genre)) &&
+    (!term || [m.title, m.narrator, m.country, ...m.genres].join(' ').toLocaleLowerCase().includes(term)));
+}
+
+export function canStream(movie) {
+  return movie?.published === true && movie.streaming_authorized === true && Boolean(secureUrl(movie.video_url));
+}
+
+export function canDownload(movie) {
+  return canStream(movie) && movie.offline_authorized === true && Boolean(secureUrl(movie.download_url)) &&
+    /\.mp4$/i.test(new URL(movie.download_url).pathname);
+}
+
+export function resumePosition(position, duration) {
+  if (!Number.isFinite(position) || position < 0) return 0;
+  if (Number.isFinite(duration) && duration > 0) return position >= duration - 10 ? 0 : Math.min(position, duration);
+  return position;
+}

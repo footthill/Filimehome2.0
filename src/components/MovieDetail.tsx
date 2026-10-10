@@ -4,7 +4,8 @@ import { motion } from 'motion/react';
 import { Star, ChevronLeft, Bookmark, Play, Plus, Check } from 'lucide-react';
 import { Movie } from '../types';
 import { cn } from '../lib/utils';
-import { fetchSimilar } from '../services/movieService';
+import { catalog, fetchSimilar } from '../services/movieService';
+import { canStream } from '../../shared/domain.mjs';
 import { MovieCard } from './MovieCard';
 
 interface MovieDetailProps {
@@ -16,37 +17,32 @@ interface MovieDetailProps {
 export function MovieDetail({ movies, watchlist, onToggleWatchlist }: MovieDetailProps) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const movie = movies.find(m => m.id === id);
+  const [movie, setMovie] = useState<Movie | null>(movies.find(m => m.id === id) || null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const [similarMovies, setSimilarMovies] = useState<Movie[]>([]);
-  const [showVideo, setShowVideo] = useState(false);
 
   useEffect(() => {
-    if (movie) {
-      const loadSimilar = async () => {
-        const similar = await fetchSimilar(movie.id, movie.type);
-        setSimilarMovies(similar);
-      };
-      loadSimilar();
-    }
-  }, [movie]);
+    let active = true;
+    setLoading(true); setError('');
+    catalog.get(id || '').then(async value => {
+      if (!active) return;
+      setMovie(value);
+      if (value) {
+        const similar = await fetchSimilar(value.id, value.type);
+        if (active) setSimilarMovies(similar);
+      }
+    }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Details unavailable.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [id]);
 
-  if (!movie) return <div>Movie not found</div>;
+  if (!movie) return <div className="p-12 pb-32"><p role="status">{loading ? 'Loading movie details…' : error || 'This movie is not available.'}</p><button onClick={() => navigate('/')}>Back to home</button></div>;
 
   const isInWatchlist = watchlist.includes(movie.id);
 
   return (
     <div className="min-h-screen pb-32">
-      {showVideo && (
-        <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
-          <button 
-            onClick={() => setShowVideo(false)} 
-            className="absolute top-4 right-4 z-50 bg-white/10 text-white px-4 py-2 rounded-full backdrop-blur-md"
-          >
-            Close
-          </button>
-          <video src={movie.video_url} controls className="w-full max-h-screen" autoPlay />
-        </div>
-      )}
       <div className="relative h-[60vh] w-full">
         <img 
           src={movie.image} 
@@ -69,6 +65,8 @@ export function MovieDetail({ movies, watchlist, onToggleWatchlist }: MovieDetai
           animate={{ opacity: 1, y: 0 }}
           className="space-y-6"
         >
+          {error && <p role="alert" className="text-red-300">{error}</p>}
+          {movie.description && <p className="text-white/60">{movie.description}</p>}
           <div className="space-y-2">
             <h1 className="text-4xl font-black tracking-tight leading-tight">{movie.title}</h1>
             <div className="flex items-center gap-4 text-sm text-white/60">
@@ -81,11 +79,12 @@ export function MovieDetail({ movies, watchlist, onToggleWatchlist }: MovieDetai
 
           <div className="flex gap-3">
             <button 
-              onClick={() => setShowVideo(true)}
+              disabled={loading || !!error || !canStream(movie)}
+              onClick={() => navigate('/watch/' + movie.id)}
               className="flex-1 h-14 flex items-center justify-center gap-2 rounded-2xl bg-red-600 font-bold text-white shadow-xl shadow-red-600/20 active:scale-95 transition-transform"
             >
               <Play className="h-5 w-5 fill-current" />
-              Watch Now
+              {canStream(movie) ? 'Watch Now' : 'Streaming unavailable'}
             </button>
             <button 
               onClick={() => onToggleWatchlist(movie.id)}
@@ -117,3 +116,4 @@ export function MovieDetail({ movies, watchlist, onToggleWatchlist }: MovieDetai
     </div>
   );
 }
+
