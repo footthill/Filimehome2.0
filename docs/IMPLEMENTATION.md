@@ -52,7 +52,27 @@ private-key canary exclusion. It has also verified mobile TypeScript, Expo SDK
 compatibility, Android export and native project generation. APK compilation and
 emulator results are recorded in the PR. A preview APK was compiled and successfully installed/cold-launched
 on API 35; the original resumed-activity text assertion failed. A separate workflow
-reuses that exact artifact for visible-screen and hardware-back checks. These checks use no live Supabase values.
+reused that exact artifact on API 30 and passed visible Home, Movies, Series,
+Search, Favorites, Profile and Android hardware-back checks.
+
+The PostgreSQL 16 policy workflow successfully executed the migration and tested
+publication, own-user reads/writes, administrator permissions, forged user_metadata
+roles and broad legacy-policy bypass attempts in isolated auth/storage schemas.
+This does not replace live Supabase configuration/integration testing.
+
+Verified APK build commit: `56e5158d339a87c2535e0c8edb8f7574c7094196`.
+Later commits record its exact dependency lock, test evidence and database guards;
+no native application source changed after that compilation.
+
+- [Compiled preview APK archive](https://github.com/footthill/Filimehome2.0/actions/runs/38068221949/artifacts/11675568777)
+- [Passed Android UI/back checks](https://github.com/footthill/Filimehome2.0/actions/runs/38070773969)
+- [Passed PostgreSQL policy tests](https://github.com/footthill/Filimehome2.0/actions/runs/38071158565)
+
+The provided APK embeds no Supabase values and displays a configuration error.
+Configure the public backend variables and rebuild before using live catalog,
+authentication or content. Playback, subtitles, account writes and downloads have
+not been exercised against live authorized content. The web watchlist remains
+device-local for compatibility; the Android library syncs to Supabase. These checks use no live Supabase values.
 
 At implementation time this workspace could not install dependencies:
 the configured npm proxy returned `EPERM` / connection failures. Local web/mobile
