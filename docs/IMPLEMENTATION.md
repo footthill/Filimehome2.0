@@ -50,7 +50,9 @@ Mocked tests do not prove the live Supabase project or Android device integratio
 GitHub Actions has verified the web tests, TypeScript check, production build and
 private-key canary exclusion. It has also verified mobile TypeScript, Expo SDK
 compatibility, Android export and native project generation. APK compilation and
-emulator results are recorded in the PR. These checks use no live Supabase values.
+emulator results are recorded in the PR. A preview APK was compiled and successfully installed/cold-launched
+on API 35; the original resumed-activity text assertion failed. A separate workflow
+reuses that exact artifact for visible-screen and hardware-back checks. These checks use no live Supabase values.
 
 At implementation time this workspace could not install dependencies:
 the configured npm proxy returned `EPERM` / connection failures. Local web/mobile
@@ -66,7 +68,7 @@ standalone preview APK; an artifact is only verified after a successful workflow
    It preserves movie rows, adds fields, and **replaces existing moviesv2 policies**
    because permissive legacy policies would bypass the new access checks.
    Existing unrelated policies on pre-existing account tables and `storage.objects`
-   must be audited too. This migration has not been executed against the live project.
+   are constrained by restrictive ownership/admin guards and should still be audited. This migration has not been executed against the live project.
 2. Configure only the public URL/publishable (anon) key in root `.env` and mobile
    `.env`, using the supplied examples. Never use a Supabase service-role key in
    Vite, Expo, the repository, or chat.
@@ -91,8 +93,8 @@ standalone preview APK; an artifact is only verified after a successful workflow
 
 ## Android build
 
-Use Node 22. Install web and mobile dependencies, commit the generated mobile
-lockfile after resolution, and run checks:
+Use Node 22. Install web and mobile dependencies, use the committed mobile
+lockfile, and run checks:
 
 ```sh
 npm ci
@@ -100,7 +102,7 @@ npm test
 npm run lint
 npm run build
 cd mobile
-npm install
+npm ci
 npx expo install --check
 npm run typecheck
 npm run export:android
@@ -111,7 +113,8 @@ GitHub Actions reads public `EXPO_PUBLIC_SUPABASE_URL` and
 but that APK will display a configuration error instead of a functional catalog.
 Its generated native release build uses the Expo template's debug signing key
 for direct preview installation, not Play Store distribution. It uploads the APK,
-resolved lockfile, emulator startup screenshot and log. No Expo account is needed
+emulator UI screenshot and logs. The committed mobile lockfile is the exact
+resolved dependency snapshot from the successful compilation. No Expo account is needed
 for this local Gradle CI route.
 
 For EAS, authorize the Expo account through its normal login mechanism, link an

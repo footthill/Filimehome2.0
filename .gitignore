@@ -15,3 +15,5 @@ mobile/ios/
 credentials.json
 *.apk
 *.aab
+
+__pycache__/

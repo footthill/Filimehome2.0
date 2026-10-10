@@ -1,8 +1,10 @@
 name: Validate FilimeHome and build preview APK
 on:
   pull_request:
+    paths-ignore: ['docs/**', 'README.md', 'scripts/android_smoke.py', '.github/workflows/verify-preview.yml']
   push:
     branches: [development/android-filimehome-2]
+    paths-ignore: ['docs/**', 'README.md', 'scripts/android_smoke.py', '.github/workflows/verify-preview.yml']
   workflow_dispatch:
 concurrency:
   group: filimehome-${{ github.event.pull_request.head.ref || github.ref_name }}
@@ -53,15 +55,7 @@ jobs:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - run: npm ci
-      # Commit the resolved mobile lockfile after the first successful install.
-      - run: npm install --prefix mobile
-      - name: Record resolved public mobile dependency lock
-        run: node -e "console.log('FILIMEHOME_MOBILE_LOCK_BASE64:' + Buffer.from(require('fs').readFileSync('mobile/package-lock.json')).toString('base64'))"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: mobile-resolved-lockfile
-          path: mobile/package-lock.json
+      - run: npm ci --prefix mobile
       - run: npm run typecheck --prefix mobile
       - run: npx expo install --check
         working-directory: mobile
@@ -76,26 +70,21 @@ jobs:
           name: filimehome-preview-apk
           path: mobile/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+      - name: Enable emulator hardware acceleration
+        run: sudo chmod a+rw /dev/kvm
       - name: Install APK and verify startup
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           disable-animations: true
-          script: |
-            adb install -r mobile/android/app/build/outputs/apk/release/app-release.apk
-            adb logcat -c
-            adb shell am start -W -n com.footthill.filimehome/.MainActivity
-            sleep 15
-            adb shell dumpsys activity activities | grep mResumedActivity | grep com.footthill.filimehome
-            adb logcat -d > android-startup.log
-            if grep -E 'FATAL EXCEPTION|Fatal signal' android-startup.log; then exit 1; fi
-            adb shell screencap -p /sdcard/filimehome-startup.png
-            adb pull /sdcard/filimehome-startup.png
+          script: python3 scripts/android_smoke.py mobile/android/app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: android-startup-evidence
           path: |
             android-startup.log
+            android-activities.log
+            android-ui.xml
             filimehome-startup.png
