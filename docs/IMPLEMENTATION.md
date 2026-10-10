@@ -47,6 +47,11 @@ publication/rights gating, offline eligibility, filters, resume, admin validatio
 pagination, direct details and backend errors. See the PR for the latest run results.
 Mocked tests do not prove the live Supabase project or Android device integration.
 
+GitHub Actions has verified the web tests, TypeScript check, production build and
+private-key canary exclusion. It has also verified mobile TypeScript, Expo SDK
+compatibility, Android export and native project generation. APK compilation and
+emulator results are recorded in the PR. These checks use no live Supabase values.
+
 At implementation time this workspace could not install dependencies:
 the configured npm proxy returned `EPERM` / connection failures. Local web/mobile
 type checking, Vite build and Expo export could not start because their binaries
@@ -117,3 +122,9 @@ passwords, keystores or tokens in chat. Package: `com.footthill.filimehome`.
 Name: `FilimeHome 2.0`. The repository lacks launcher artwork; supply/approve an
 icon before release. Real accounts, catalog, playback, downloads, access policies
 and physical-device navigation still require integration testing with configured services.
+
+The dependency audit after nonbreaking web lockfile updates reported two remaining
+findings (one low and one moderate); the initial mobile install reported 35
+findings (12 moderate, 23 high). These transitive dependency findings require
+further patching/SDK compatibility review before a production release. No blanket
+claim of production security is made.

@@ -74,6 +74,21 @@ alter table public.watch_history enable row level security;
 alter table public.categories enable row level security;
 create policy profile_owner on public.profiles for all to authenticated
   using (id = auth.uid()) with check (id = auth.uid());
+-- Restrictive ownership guards also apply if these tables already have legacy
+-- permissive policies. They protect this app without deleting unrelated policies.
+create policy profile_owner_guard on public.profiles as restrictive for all to anon, authenticated
+  using (id = auth.uid()) with check (id = auth.uid());
+create policy library_owner_guard on public.user_library as restrictive for all to anon, authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid() and exists (
+    select 1 from public.moviesv2 m where m.id::text = user_library.movie_id and m.published
+  ));
+create policy history_owner_guard on public.watch_history as restrictive for all to anon, authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid() and exists (
+    select 1 from public.moviesv2 m where m.id::text = watch_history.movie_id and m.published and
+      ((watch_history.episode_id = '' and m.streaming_authorized) or exists (
+        select 1 from jsonb_array_elements(m.episodes) e where e->>'id' = watch_history.episode_id and e->>'streaming_authorized' = 'true'
+      ))
+  ));
 create policy library_read on public.user_library for select to authenticated using (user_id = auth.uid());
 create policy library_insert on public.user_library for insert to authenticated with check (
   user_id = auth.uid() and exists (select 1 from public.moviesv2 m where m.id::text = movie_id and m.published)
@@ -98,6 +113,10 @@ create policy history_owner_update on public.watch_history for update to authent
 );
 create policy categories_read on public.categories for select to anon, authenticated using (true);
 create policy categories_admin on public.categories for all to authenticated using (public.is_filimehome_admin()) with check (public.is_filimehome_admin());
+create policy categories_insert_guard on public.categories as restrictive for insert to anon, authenticated with check (public.is_filimehome_admin());
+create policy categories_update_guard on public.categories as restrictive for update to anon, authenticated
+  using (public.is_filimehome_admin()) with check (public.is_filimehome_admin());
+create policy categories_delete_guard on public.categories as restrictive for delete to anon, authenticated using (public.is_filimehome_admin());
 grant select, insert, update, delete on public.profiles, public.user_library, public.watch_history to authenticated;
 grant select on public.categories to anon;
 grant select, insert, update, delete on public.categories to authenticated;
@@ -115,4 +134,13 @@ create policy filimehome_poster_update on storage.objects for update to authenti
   with check (bucket_id = 'filimehome-posters' and public.is_filimehome_admin());
 create policy filimehome_poster_delete on storage.objects for delete to authenticated
   using (bucket_id = 'filimehome-posters' and public.is_filimehome_admin());
+-- Old broad storage policies must not permit writes to this app's poster bucket.
+-- Other buckets retain their existing access behavior.
+create policy filimehome_poster_insert_guard on storage.objects as restrictive for insert to anon, authenticated
+  with check (bucket_id <> 'filimehome-posters' or public.is_filimehome_admin());
+create policy filimehome_poster_update_guard on storage.objects as restrictive for update to anon, authenticated
+  using (bucket_id <> 'filimehome-posters' or public.is_filimehome_admin())
+  with check (bucket_id <> 'filimehome-posters' or public.is_filimehome_admin());
+create policy filimehome_poster_delete_guard on storage.objects as restrictive for delete to anon, authenticated
+  using (bucket_id <> 'filimehome-posters' or public.is_filimehome_admin());
 commit;
