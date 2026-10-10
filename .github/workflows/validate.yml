@@ -1,0 +1,85 @@
+name: Validate FilimeHome and build preview APK
+on:
+  pull_request:
+  push:
+    branches: [development/android-filimehome-2]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+      - name: Check browser bundles for private key canaries
+        run: |
+          GEMINI_API_KEY=filimehome-private-gemini-canary TMDB_API_KEY=filimehome-private-tmdb-canary npm run build
+          if grep -R -E 'filimehome-private-(gemini|tmdb)-canary' dist/assets; then exit 1; fi
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      # Commit the resolved mobile lockfile after the first successful install.
+      - run: npm install --prefix mobile
+      - run: npm run typecheck --prefix mobile
+      - run: npx expo install --check
+        working-directory: mobile
+      - run: npm run export:android --prefix mobile
+      - run: npx expo prebuild --platform android --non-interactive
+        working-directory: mobile
+      - name: Compile standalone preview APK using generated debug signing
+        run: ./gradlew assembleRelease --no-daemon
+        working-directory: mobile/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: filimehome-preview-apk
+          path: mobile/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-resolved-lockfile
+          path: mobile/package-lock.json
+      - name: Install APK and verify startup
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb install -r mobile/android/app/build/outputs/apk/release/app-release.apk
+            adb logcat -c
+            adb shell am start -W -n com.footthill.filimehome/.MainActivity
+            sleep 15
+            adb shell dumpsys activity activities | grep mResumedActivity | grep com.footthill.filimehome
+            adb logcat -d > android-startup.log
+            if grep -E 'FATAL EXCEPTION|Fatal signal' android-startup.log; then exit 1; fi
+            adb shell screencap -p /sdcard/filimehome-startup.png
+            adb pull /sdcard/filimehome-startup.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-startup-evidence
+          path: |
+            android-startup.log
+            filimehome-startup.png
