@@ -1,0 +1,5 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": { "strict": true, "noEmit": true, "baseUrl": ".", "paths": { "@supabase/supabase-js": ["node_modules/@supabase/supabase-js"] } },
+  "include": ["**/*.ts", "**/*.tsx", "../shared/**/*.ts", "../shared/**/*.mts", "../src/types.ts"]
+}
