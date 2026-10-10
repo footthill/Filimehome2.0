@@ -113,6 +113,12 @@ standalone preview APK; an artifact is only verified after a successful workflow
 
 ## Android build
 
+For the latest version-code-2 universal testing APK, verified signing/checksum,
+API 35 fresh-install/update/navigation results and Samsung troubleshooting, see
+[Android installation](ANDROID_INSTALLATION.md). Its successful workflow is
+[38073572979](https://github.com/footthill/Filimehome2.0/actions/runs/38073572979).
+The download in that guide supersedes the earlier preview artifact above.
+
 Use Node 22. Install web and mobile dependencies, use the committed mobile
 lockfile, and run checks:
 
@@ -131,9 +137,12 @@ npm run export:android
 GitHub Actions reads public `EXPO_PUBLIC_SUPABASE_URL` and
 `EXPO_PUBLIC_SUPABASE_ANON_KEY` repository variables. It can build without them,
 but that APK will display a configuration error instead of a functional catalog.
-Its generated native release build uses the Expo template's debug signing key
-for direct preview installation, not Play Store distribution. It uploads the APK,
-emulator UI screenshot and logs. The committed mobile lockfile is the exact
+Its native release build uses the Expo template's debug signing key
+for direct preview installation, not Play Store distribution. The workflow explicitly
+builds all four Android ABIs, aligns/signs the standalone APK, verifies signing,
+CRC integrity, actual manifest and 16 KB ZIP alignment, and tests it on API 35.
+It uploads the APK, checksum, public certificate metadata, emulator UI screenshot
+and package-manager logs. The committed mobile lockfile is the exact
 resolved dependency snapshot from the successful compilation. No Expo account is needed
 for this local Gradle CI route.
 

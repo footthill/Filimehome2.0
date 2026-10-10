@@ -28,5 +28,8 @@ and checks emulator startup. The EAS `preview` profile also produces an APK afte
 an Expo account/project and signing are authorized. Preview signing is not for
 Play Store release. See the implementation document for exact configuration.
 
+For the universal Android 15 testing APK, installation instructions, checksums
+and Samsung device diagnostics, see [Android installation](docs/ANDROID_INSTALLATION.md).
+
 The original AI Studio project remains at:
 https://ai.studio/apps/ac23348d-1061-4447-8ead-c3100c69ddf5
