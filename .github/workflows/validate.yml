@@ -18,12 +18,8 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Resolve nonbreaking dependency security updates
-        run: |
-          npm audit fix --package-lock-only --ignore-scripts || true
-          node -e "console.log('FILIMEHOME_LOCK_BASE64:' + Buffer.from(require('fs').readFileSync('package-lock.json')).toString('base64'))"
-          npm audit --json > npm-audit.json || true
       - run: npm ci
+      - run: npm audit --json > npm-audit.json || true
       - uses: actions/upload-artifact@v4
         with:
           name: web-dependency-audit
@@ -59,6 +55,8 @@ jobs:
       - run: npm ci
       # Commit the resolved mobile lockfile after the first successful install.
       - run: npm install --prefix mobile
+      - name: Record resolved public mobile dependency lock
+        run: node -e "console.log('FILIMEHOME_MOBILE_LOCK_BASE64:' + Buffer.from(require('fs').readFileSync('mobile/package-lock.json')).toString('base64'))"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
