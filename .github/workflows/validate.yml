@@ -39,6 +39,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - run: npm ci
       # Commit the resolved mobile lockfile after the first successful install.
       - run: npm install --prefix mobile

@@ -50,7 +50,8 @@ export function AdminView() {
       const valid = validateMovieDraft({ ...draft, episodes: JSON.parse(episodes), qualities: JSON.parse(qualities), subtitles: JSON.parse(subtitles) });
       const { id, ...payload } = valid;
       const row = { ...payload, modifiedAt: new Date().toISOString() };
-      const result = editing ? await supabase.from('moviesv2').update(row).eq('id', id) : await supabase.from('moviesv2').insert(id ? { ...row, id } : row);
+      const insertRow = { ...row, ...(id ? { id } : {}) };
+      const result = editing ? await supabase.from('moviesv2').update(row).eq('id', id) : await supabase.from('moviesv2').insert(insertRow);
       if (result.error) throw result.error;
       await load(); select(); setNotice('Movie saved.');
     } catch (e) { setNotice(e instanceof Error ? e.message : 'Save failed.'); } finally { setBusy(false); }

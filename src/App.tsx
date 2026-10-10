@@ -408,7 +408,7 @@ function SearchView({ allMovies }: { allMovies: Movie[] }) {
 
       <div className="space-y-8">
         <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {localResults.map(movie => <MovieCard key={movie.id} movie={movie} />)}
+          {localResults.map(movie => <div key={movie.id}><MovieCard movie={movie} /></div>)}
         </section>
         {query && localResults.length === 0 && <p className="text-white/60">No matching titles in the published catalog.</p>}
         {!query && (
