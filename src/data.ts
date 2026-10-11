@@ -1,3 +1,4 @@
+// Legacy demo metadata retained for reference; never used by the production catalog.
 import { Movie } from './types';
 
 export const INITIAL_MOVIES: Movie[] = [
@@ -12,7 +13,7 @@ export const INITIAL_MOVIES: Movie[] = [
     country: '',
     release_date: '2024',
     modifiedAt: '',
-    video_url: 'https://www.w3schools.com/html/mov_bbb.mp4'
+    video_url: ''
   },
   {
     id: '2',
@@ -25,7 +26,7 @@ export const INITIAL_MOVIES: Movie[] = [
     country: '',
     release_date: '2022',
     modifiedAt: '',
-    video_url: 'https://www.w3schools.com/html/mov_bbb.mp4'
+    video_url: ''
   },
   {
     id: '3',
@@ -38,7 +39,7 @@ export const INITIAL_MOVIES: Movie[] = [
     country: '',
     release_date: '2024',
     modifiedAt: '',
-    video_url: 'https://www.w3schools.com/html/mov_bbb.mp4'
+    video_url: ''
   },
   {
     id: '4',
@@ -51,7 +52,7 @@ export const INITIAL_MOVIES: Movie[] = [
     country: '',
     release_date: '2024',
     modifiedAt: '',
-    video_url: 'https://www.w3schools.com/html/mov_bbb.mp4'
+    video_url: ''
   },
   {
     id: '5',
@@ -64,7 +65,7 @@ export const INITIAL_MOVIES: Movie[] = [
     country: '',
     release_date: '2024',
     modifiedAt: '',
-    video_url: 'https://www.w3schools.com/html/mov_bbb.mp4'
+    video_url: ''
   },
   {
     id: '6',
@@ -77,7 +78,7 @@ export const INITIAL_MOVIES: Movie[] = [
     country: '',
     release_date: '2024',
     modifiedAt: '',
-    video_url: 'https://www.w3schools.com/html/mov_bbb.mp4'
+    video_url: ''
   },
   {
     id: '7',
@@ -90,7 +91,7 @@ export const INITIAL_MOVIES: Movie[] = [
     country: '',
     release_date: '2023',
     modifiedAt: '',
-    video_url: 'https://www.w3schools.com/html/mov_bbb.mp4'
+    video_url: ''
   },
   {
     id: '8',
@@ -103,6 +104,7 @@ export const INITIAL_MOVIES: Movie[] = [
     country: '',
     release_date: '2024',
     modifiedAt: '',
-    video_url: 'https://www.w3schools.com/html/mov_bbb.mp4'
+    video_url: ''
   }
 ];
+

@@ -1,0 +1,139 @@
+name: Validate FilimeHome and build preview APK
+on:
+  pull_request:
+    paths-ignore: ['docs/**', 'README.md', 'scripts/android_smoke.py', '.github/workflows/verify-preview.yml']
+  push:
+    branches: [development/android-filimehome-2]
+    paths-ignore: ['docs/**', 'README.md', 'scripts/android_smoke.py', '.github/workflows/verify-preview.yml']
+  workflow_dispatch:
+concurrency:
+  group: filimehome-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm audit --json > npm-audit.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dependency-audit
+          path: |
+            package-lock.json
+            npm-audit.json
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+      - name: Check browser bundles for private key canaries
+        run: |
+          GEMINI_API_KEY=filimehome-private-gemini-canary TMDB_API_KEY=filimehome-private-tmdb-canary npm run build
+          if grep -R -E 'filimehome-private-(gemini|tmdb)-canary' dist/assets; then exit 1; fi
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: Install explicit Android build tools
+        run: sdkmanager 'build-tools;36.0.0' 'platforms;android-36'
+      - run: npm ci
+      - run: npm ci --prefix mobile
+      - name: Validate and configure the existing public Supabase project
+        run: node scripts/configure_public_backend.mjs
+      - name: Test real catalog, categories, search and direct details without database writes
+        run: node scripts/test_live_catalog.mjs
+      - run: npm run typecheck --prefix mobile
+      - run: npx expo install --check
+        working-directory: mobile
+      - run: npm run export:android --prefix mobile
+      - run: npx expo prebuild --platform android --non-interactive
+        working-directory: mobile
+      - name: Compile standalone universal testing APK
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+        working-directory: mobile/android
+      - name: Align and sign the testing APK with the existing preview certificate
+        shell: bash
+        run: |
+          mkdir -p android-testing-apk android-evidence
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          "$tools/zipalign" -P 16 -f 4 mobile/android/app/build/outputs/apk/release/app-release.apk android-evidence/aligned.apk
+          "$tools/apksigner" sign --ks mobile/android/app/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out android-testing-apk/FilimeHome-2.0-connected-android15.apk android-evidence/aligned.apk
+          rm android-evidence/aligned.apk
+          python3 scripts/inspect_apk.py android-testing-apk/FilimeHome-2.0-connected-android15.apk --version-code 3 --output android-evidence/corrected
+          cp android-evidence/corrected/SHA256SUMS android-evidence/corrected/metadata.json android-testing-apk/
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: filimehome-android15-universal-apk
+          run-id: 38073572979
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: previous-apk
+      - name: Inspect the previously supplied APK
+        continue-on-error: true
+        run: python3 scripts/inspect_apk.py previous-apk/FilimeHome-2.0-android15-universal.apk --version-code 2 --output android-evidence/previous
+      - name: Verify preview update signing continuity
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          previous = Path('android-evidence/previous/metadata.json')
+          if previous.exists():
+              old = json.loads(previous.read_text())
+              new = json.loads(Path('android-evidence/corrected/metadata.json').read_text())
+              assert old['certificate_sha256'] == new['certificate_sha256'], 'Preview certificate changed; same-package update would fail'
+              assert new['version_code'] > old['version_code'], 'Preview version code must increase'
+              print('Original preview certificate preserved; version code increased from 2 to 3.')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: filimehome-connected-android15-apk
+          path: android-testing-apk/
+          if-no-files-found: error
+      - name: Enable emulator hardware acceleration
+        run: sudo chmod a+rw /dev/kvm
+      - name: Install APK and verify startup
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -skin 720x1600 -memory 3072
+          script: python3 scripts/android_smoke.py android-testing-apk/FilimeHome-2.0-connected-android15.apk --previous-apk previous-apk/FilimeHome-2.0-android15-universal.apk --expected-sdk 35 --expected-version-code 3 --verify-fresh-install --catalog-fixture backend-audit/live-catalog.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android15-installation-evidence
+          path: |
+            android-evidence/
+            backend-audit/
+            android-install.log
+            android-package-before.log
+            android-package-after.log
+            android-device.json
+            android-startup.log
+            android-activities.log
+            android-ui.xml
+            filimehome-startup.png

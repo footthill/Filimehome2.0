@@ -6,3 +6,15 @@ coverage/
 *.log
 .env*
 !.env.example
+
+.expo/
+mobile/android/
+mobile/ios/
+*.jks
+*.keystore
+credentials.json
+*.apk
+*.aab
+
+__pycache__/
+device-install-evidence/

@@ -1,30 +1,34 @@
 import React, { useState, useEffect } from 'react';
-// Force a commit
 import { BrowserRouter as Router, Routes, Route, Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search as SearchIcon, Bell, Star, Film, Sparkles, Plus, Loader2, Bookmark, Menu, Share2, Play, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Movie } from './types';
-import { INITIAL_MOVIES } from './data';
 import { Navbar } from './components/Navbar';
 import { MovieCard } from './components/MovieCard';
 import { MovieDetail } from './components/MovieDetail';
 import { Sidebar } from './components/Sidebar';
 import { cn } from './lib/utils';
-import { getRecommendations, searchMoviesAI, chatWithAI } from './services/ai';
-import { fetchTrending, fetchByType, searchMovies } from './services/movieService';
+import { getRecommendations, chatWithAI } from './services/ai';
+import { fetchTrending } from './services/movieService';
+import { filterCatalog } from '../shared/domain.mjs';
+import { AccountView } from './components/AccountView';
+import { WebPlayer } from './components/WebPlayer';
+import { AdminView } from './components/AdminView';
 
 export default function App() {
-  const [movies, setMovies] = useState<Movie[]>(INITIAL_MOVIES);
+  const [movies, setMovies] = useState<Movie[]>([]);
   const [watchlist, setWatchlist] = useState<string[]>(() => {
     const saved = localStorage.getItem('watchlist');
-    return saved ? JSON.parse(saved) : [];
+    try { return saved ? JSON.parse(saved) : []; } catch { return []; }
   });
   
   const [userRatings, setUserRatings] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('userRatings');
-    return saved ? JSON.parse(saved) : {};
+    try { return saved ? JSON.parse(saved) : {}; } catch { return {}; }
   });
 
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [aiRecs, setAiRecs] = useState<string[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -39,10 +43,9 @@ export default function App() {
 
   useEffect(() => {
     const loadData = async () => {
-      const trending = await fetchTrending();
-      if (trending.length > 0) {
-        setMovies(trending);
-      }
+      try { setMovies(await fetchTrending()); }
+      catch (error) { setCatalogError(error instanceof Error ? error.message : 'Catalog unavailable'); }
+      finally { setCatalogLoading(false); }
     };
     loadData();
   }, []);
@@ -71,6 +74,9 @@ export default function App() {
         
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
+        {catalogLoading && <div role="status" className="pt-36 px-6 animate-pulse">Loading movie catalog…</div>}
+        {catalogError && <div role="alert" className="pt-36 px-6 text-red-300">{catalogError} <button onClick={() => window.location.reload()}>Retry</button></div>}
+        {!catalogLoading && !catalogError && movies.length === 0 && <p className="pt-36 px-6 text-white/60">No movies have been published yet.</p>}
         <Routes>
           <Route path="/" element={
             <HomeView 
@@ -98,7 +104,11 @@ export default function App() {
               onToggleWatchlist={toggleWatchlist} 
             />
           } />
-          <Route path="/profile" element={<ProfileView />} />
+          <Route path="/profile" element={<AccountView />} />
+          <Route path="/watch/:id" element={<WebPlayer />} />
+          <Route path="/admin" element={<AdminView />} />
+          <Route path="/movies" element={<SearchView allMovies={movies.filter(m => m.type === 'movie')} />} />
+          <Route path="/series" element={<SearchView allMovies={movies.filter(m => m.type === 'tv')} />} />
         </Routes>
 
         <Navbar />
@@ -169,20 +179,11 @@ function ChatRedirect() {
           <div>
             <h3 className="font-bold text-sm text-white">FilmHome Genie</h3>
             <p className="text-[10px] text-green-300 font-medium">
-              {isTyping ? "typing..." : "online"}
+              {isTyping ? "typing..." : "Movie assistant"}
             </p>
           </div>
         </div>
         
-        {/* Safe External Redirect Button */}
-        <a 
-          href="https://wa.me/250700000000"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#25d366] hover:bg-[#20ba5a] active:scale-95 transition-all rounded-full text-[10px] font-black uppercase text-black"
-        >
-          Open App
-        </a>
       </div>
 
       {/* WhatsApp Chat Bubbles Wrapper */}
@@ -270,7 +271,7 @@ function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }:
           <div className="h-6 w-6 rounded bg-yellow-500 flex items-center justify-center">
              <Star className="h-4 w-4 text-black fill-current" />
           </div>
-          <span className="text-xl font-bold tracking-tighter uppercase italic">FilmHome</span>
+          <span className="text-xl font-bold tracking-tighter uppercase italic">FilimeHome</span>
         </div>
         <div className="flex items-center gap-4">
           <Link to="/search">
@@ -286,21 +287,21 @@ function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }:
       <div className="mt-28 space-y-10">
         {/* Top Feature Sliders (The big vertical ones) */}
         <section className="px-6 grid grid-cols-2 gap-4">
-           {movies[3] && <MovieCard movie={movies[3]} variant="vertical" />}
-           {movies[4] && <MovieCard movie={movies[4]} variant="vertical" />}
+           {movies[0] && <MovieCard movie={movies[0]} variant="vertical" />}
+           {movies[1] && <MovieCard movie={movies[1]} variant="vertical" />}
         </section>
 
         {/* Large Horizontal Highlight */}
         <section className="px-6">
-           {movies[4] && <MovieCard movie={movies[4]} variant="horizontal" />}
+           {movies[1] && <MovieCard movie={movies[1]} variant="horizontal" />}
         </section>
 
-        {/* AI Recommendations */}
+        {/* Recommended for you */}
         <section className="px-6 space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-yellow-500" />
-              <h3 className="text-lg font-black uppercase italic tracking-tighter">AI Recommendations</h3>
+              <h3 className="text-lg font-black uppercase italic tracking-tighter">Recommended for you</h3>
             </div>
             <button 
               onClick={onRefreshRecs}
@@ -308,7 +309,7 @@ function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }:
               className="text-[10px] font-black uppercase tracking-widest text-yellow-500 hover:text-yellow-400 disabled:opacity-50 flex items-center gap-1"
             >
               {isAiLoading && <Loader2 className="h-3 w-3 animate-spin" />}
-              {aiRecs.length > 0 ? "Refresh" : "Show Magic"}
+              {aiRecs.length > 0 ? "Refresh" : "Discover"}
             </button>
           </div>
           
@@ -321,7 +322,7 @@ function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }:
                    </div>
                    <div className="flex-1">
                      <h4 className="font-bold text-sm leading-tight mb-0.5">{title}</h4>
-                     <p className="text-[10px] font-black uppercase tracking-widest text-yellow-500/60">Suggested for you</p>
+                     <p className="text-[10px] font-black uppercase tracking-widest text-yellow-500/60">From your catalog</p>
                    </div>
                    <ChevronRight className="h-4 w-4 text-white/20" />
                 </div>
@@ -338,7 +339,7 @@ function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }:
         <section className="space-y-4">
           <div className="flex items-center justify-between px-6">
             <h3 className="text-lg font-black uppercase italic tracking-tighter flex items-center gap-2 text-white">
-              Hot Seasons You Can't Miss <ChevronRight className="h-4 w-4 text-yellow-500" />
+              Trending & Latest <ChevronRight className="h-4 w-4 text-yellow-500" />
             </h3>
           </div>
           <div className="flex gap-4 overflow-x-auto px-6 no-scrollbar pb-2">
@@ -353,7 +354,7 @@ function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }:
         <section className="space-y-4">
           <div className="flex items-center justify-between px-6">
             <h3 className="text-lg font-black uppercase italic tracking-tighter flex items-center gap-2 text-white">
-              Steamy Romance Hits <ChevronRight className="h-4 w-4 text-yellow-500" />
+              Movies <ChevronRight className="h-4 w-4 text-yellow-500" />
             </h3>
           </div>
           <div className="flex gap-4 overflow-x-auto px-6 no-scrollbar pb-2">
@@ -383,39 +384,9 @@ function HomeView({ movies, aiRecs, onRefreshRecs, isAiLoading, onOpenSidebar }:
 function SearchView({ allMovies }: { allMovies: Movie[] }) {
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState("");
-  const [aiResults, setAiResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-
-  useEffect(() => {
-    const genreParam = searchParams.get('genre');
-    if (genreParam) {
-      setQuery(genreParam);
-      const runSearch = async () => {
-        setIsSearching(true);
-        const aiRes = await searchMoviesAI(genreParam);
-        setAiResults(aiRes);
-        setIsSearching(false);
-      };
-      runSearch();
-    }
-  }, [searchParams]);
-
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query) return;
-    setIsSearching(true);
-    
-    // Parallel search: AI
-    const aiRes = await searchMoviesAI(query);
-    
-    setAiResults(aiRes);
-    setIsSearching(false);
-  };
-
-  const localResults = allMovies.filter(m => 
-    m.title.toLowerCase().includes(query.toLowerCase()) || 
-    m.genres.some(g => g.toLowerCase().includes(query.toLowerCase()))
-  );
+  useEffect(() => { setQuery(searchParams.get('genre') || ''); }, [searchParams]);
+  const handleSearch = (e: React.FormEvent) => e.preventDefault();
+  const localResults = filterCatalog(allMovies, query);
 
   return (
     <div className="px-6 pb-32 pt-12 space-y-8 min-h-screen">
@@ -436,43 +407,15 @@ function SearchView({ allMovies }: { allMovies: Movie[] }) {
       </form>
 
       <div className="space-y-8">
-        {query && (
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-white/40">AI Deep Discovery</h3>
-              {isSearching && <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />}
-            </div>
-            
-            <div className="grid grid-cols-1 gap-4">
-              {aiResults.map((m, idx) => (
-                <div key={idx} className="p-6 rounded-[32px] glass space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-lg leading-tight flex-1 pr-4">{m.title}</h4>
-                    <span className="text-[10px] font-black uppercase p-1 px-3 rounded-full bg-white/10">{m.type}</span>
-                  </div>
-                  <p className="text-sm text-white/60 line-clamp-3 leading-relaxed">{m.description}</p>
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {m.genres?.map((g: string) => (
-                      <span key={g} className="text-[10px] font-black uppercase tracking-widest text-yellow-500/50">{g}</span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {!isSearching && aiResults.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-48 opacity-20">
-                   <Sparkles className="h-10 w-10 mb-2" />
-                   <p className="text-xs font-black uppercase tracking-widest">Ask AI for recommendations</p>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
+        <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {localResults.map(movie => <div key={movie.id}><MovieCard movie={movie} /></div>)}
+        </section>
+        {query && localResults.length === 0 && <p className="text-white/60">No matching titles in the published catalog.</p>}
         {!query && (
           <div className="space-y-4 pt-10">
              <h3 className="text-[10px] font-black uppercase tracking-widest text-white/40">Popular Search</h3>
              <div className="flex flex-wrap gap-2">
-                {['Action', 'Thriller', 'Horror', 'Romantic', 'Sci-Fi', 'Mystery', 'Crime'].map(tag => (
+                {Array.from(new Set(allMovies.flatMap(m => m.genres))).sort().map(tag => (
                   <button onClick={() => setQuery(tag)} key={tag} className="px-4 py-2 rounded-2xl glass text-xs font-bold hover:bg-white/10 transition-colors uppercase tracking-widest text-white">
                     {tag}
                   </button>
@@ -526,47 +469,3 @@ function WatchlistView({ movies, watchlist }: { movies: Movie[], watchlist: stri
   );
 }
 
-function ProfileView() {
-  return (
-    <div className="px-6 pb-32 pt-24 space-y-12 min-h-screen">
-      <div className="flex flex-col items-center text-center space-y-6">
-        <div className="h-36 w-36 rounded-[56px] bg-gradient-to-br from-yellow-500/20 to-red-500/20 p-1 shadow-2xl">
-          <div className="h-full w-full rounded-[52px] bg-surface flex items-center justify-center overflow-hidden border border-white/5">
-            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=2080&auto=format&fit=crop" className="h-full w-full object-cover" />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <h2 className="text-4xl font-black italic uppercase tracking-tighter">Cinephile Alex</h2>
-          <p className="text-[10px] text-yellow-500 font-black tracking-[0.3em] uppercase opacity-60">Gold Member Elite</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div className="p-5 rounded-[32px] glass text-center space-y-1">
-          <div className="text-2xl font-black italic">128</div>
-          <div className="text-[8px] uppercase text-white/40 font-black tracking-widest">Seen</div>
-        </div>
-        <div className="p-5 rounded-[32px] glass text-center space-y-1">
-          <div className="text-2xl font-black italic">42</div>
-          <div className="text-[8px] uppercase text-white/40 font-black tracking-widest">Votes</div>
-        </div>
-        <div className="p-5 rounded-[32px] glass text-center space-y-1">
-          <div className="text-2xl font-black italic">15h</div>
-          <div className="text-[8px] uppercase text-white/40 font-black tracking-widest">Time</div>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <button className="w-full flex items-center justify-between px-6 py-5 rounded-[32px] glass font-black uppercase tracking-widest text-[10px] text-white/80 hover:text-white transition-colors">
-          Account Intelligence <Plus className="h-4 w-4 text-white/20 rotate-45" />
-        </button>
-        <button className="w-full flex items-center justify-between px-6 py-5 rounded-[32px] glass font-black uppercase tracking-widest text-[10px] text-white/80 hover:text-white transition-colors">
-          Cinephile Preferences <Plus className="h-4 w-4 text-white/20 rotate-45" />
-        </button>
-        <button className="w-full flex items-center justify-between px-6 py-5 rounded-[32px] glass font-black uppercase tracking-widest text-[10px] text-red-500">
-          Eject Mission
-        </button>
-      </div>
-    </div>
-  );
-}

@@ -1,0 +1,30 @@
+name: Validate Supabase access policies
+on:
+  push:
+    branches: [development/android-filimehome-2]
+    paths: ['supabase/**', 'tests/rls.sql', '.github/workflows/backend-policy.yml']
+  pull_request:
+    paths: ['supabase/**', 'tests/rls.sql', '.github/workflows/backend-policy.yml']
+permissions:
+  contents: read
+jobs:
+  policies:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # This ephemeral fixture database has no real user data or credentials.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute migration and test RLS using anonymous, user and admin claims
+        run: psql -h 127.0.0.1 -U postgres -d postgres -f tests/rls.sql
+      - name: Validate owner read-only audit SQL against isolated fixture schemas
+        run: psql -h 127.0.0.1 -U postgres -d postgres -f supabase/audits/production_readonly.sql
