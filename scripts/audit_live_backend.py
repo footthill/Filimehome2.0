@@ -109,14 +109,14 @@ for fingerprint, config in configurations.items():
         if isinstance(data, dict):
             check['error'] = {k: data.get(k) for k in ['code', 'message', 'hint']}
         if name == 'movies_sample' and isinstance(data, list):
-            check['sample'] = [{k: row.get(k) for k in ['id', 'title', 'type', 'genres', 'published', 'streaming_authorized', 'offline_authorized'] if k in row} for row in data]
+            check['sample'] = [{k: row.get(k) for k in ['id', 'title', 'type', 'tmdb_type', 'genres', 'release_date', 'publishedAt', 'published', 'streaming_authorized', 'offline_authorized'] if k in row} for row in data]
             check['column_names'] = sorted({k for row in data for k in row})
             check['source_protocols'] = sorted({urllib.parse.urlparse(str(row.get('video_url', ''))).scheme for row in data})
         if name == 'categories' and isinstance(data, list):
             check['sample'] = data
         backend['checks'][name] = check
     REPORT['backends'].append(backend)
-    if backend['checks']['movies_sample']['status'] == 200:
+    if backend['checks']['movies_sample']['status'] in (200, 206):
         # These are public browser credentials, never service-role/secret keys.
         (OUT / (fingerprint[:12] + '-public-config.json')).write_text(json.dumps(config, indent=2) + '\n')
 

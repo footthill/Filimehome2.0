@@ -14,6 +14,7 @@ parser.add_argument('apk', type=Path)
 parser.add_argument('--previous-apk', type=Path)
 parser.add_argument('--expected-sdk', type=int)
 parser.add_argument('--expected-version-code', type=int)
+parser.add_argument('--catalog-fixture', type=Path, help='Read-only real backend integration report')
 parser.add_argument('--verify-fresh-install', action='store_true', help='Emulator-only uninstall/reinstall check')
 args = parser.parse_args()
 
@@ -70,6 +71,51 @@ def tap(label):
     raise AssertionError('Control not found: ' + label)
 
 
+def wait_catalog_count():
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        tree = ui()
+        for node in tree.iter('node'):
+            if node.get('resource-id', '').endswith('catalog-result-count'):
+                match = re.fullmatch(r'(\d+) titles?', node.get('text', ''))
+                if match and int(match.group(1)) > 0:
+                    print('Verified real catalog result count:', match.group(1), flush=True)
+                    return int(match.group(1))
+        time.sleep(2)
+    raise AssertionError('Configured app did not display a nonempty real catalog')
+
+
+def verify_live_catalog():
+    fixture = json.loads(args.catalog_fixture.read_text())
+    wait_catalog_count()
+    query = fixture['query']
+    assert re.fullmatch(r'[A-Za-z0-9 ]{3,45}', query), 'Unsafe Android input query'
+    tap('Search movie catalog')
+    adb('shell', 'input', 'text', query.replace(' ', '%s'))
+    adb('shell', 'input', 'keyevent', '4')  # Dismiss the input keyboard.
+    wait_text('View ' + fixture['movie']['title'])
+    tap('Filter category ' + fixture['genre'])
+    wait_text('View ' + fixture['movie']['title'])
+    selected = [node for node in ui().iter('node') if node.get('content-desc') == 'Filter category ' + fixture['genre']]
+    assert any(node.get('selected') == 'true' for node in selected), 'Category control did not become selected'
+    tap('View ' + fixture['movie']['title'])
+    wait_text(fixture['movie']['title'])
+    if not fixture['movie']['stream_authorized']:
+        for _ in range(8):
+            tree = ui()
+            if any('Streaming is not available for this title.' in node.get('text', '') for node in tree.iter('node')):
+                break
+            adb('shell', 'input', 'swipe', '360', '1300', '360', '550', '300')
+        else:
+            raise AssertionError('Missing explicit unavailable-playback state')
+        buttons = [node for node in tree.iter('node') if node.get('content-desc') == 'Watch now']
+        assert buttons and all(node.get('enabled') == 'false' for node in buttons), 'Unapproved playback was enabled'
+        print('Playback correctly unavailable: no explicit authorized source; playback itself was not tested.', flush=True)
+    Path('android-evidence').mkdir(exist_ok=True)
+    Path('android-evidence/live-details.xml').write_text(adb('shell', 'cat', '/sdcard/filimehome-ui.xml'))
+    print('Real catalog, search, category selection and movie details verified:', fixture['movie']['id'], fixture['movie']['title'], flush=True)
+
+
 try:
     adb('logcat', '-c')
     properties = {key: adb('shell', 'getprop', key).strip() for key in [
@@ -111,6 +157,8 @@ try:
     wait_text('Your collection')
     adb('shell', 'input', 'keyevent', '4')
     wait_text('Explore')
+    if args.catalog_fixture:
+        verify_live_catalog()
     if args.verify_fresh_install:
         # Disposable emulator only; no physical-device data is removed.
         print(adb('uninstall', PACKAGE), flush=True)
@@ -118,6 +166,10 @@ try:
         print(adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity'), flush=True)
         wait_text('FilimeHome')
         assert adb('shell', 'pidof', PACKAGE).strip(), 'Fresh installation exited'
+        if args.catalog_fixture:
+            tap('Search')
+            wait_text('Explore', heading=True)
+            wait_catalog_count()
         print('Android 15 fresh installation and cold launch passed.', flush=True)
     print('Android startup, tab navigation, profile and hardware back checks passed.', flush=True)
 finally:

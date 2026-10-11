@@ -15,20 +15,20 @@ import { colors, styles as s } from './theme';
 type Navigation = NativeStackNavigationProp<RootStack>;
 export const message = (error: unknown) => error instanceof Error ? error.message : 'The request failed. Please try again.';
 export function Button({ title, onPress, disabled = false }: { title: string; onPress: () => void; disabled?: boolean }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={[s.button, disabled && { opacity: 0.45 }]}><Text style={s.buttonText}>{title}</Text></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={title} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={[s.button, disabled && { opacity: 0.45 }]}><Text style={s.buttonText}>{title}</Text></Pressable>;
 }
-function Poster({ movie, width = 132 }: { movie: Movie; width?: number }) {
+const Poster = React.memo(function Poster({ movie, width = 132 }: { movie: Movie; width?: number }) {
   const navigation = useNavigation<Navigation>();
-  return <Pressable accessibilityRole="button" accessibilityLabel={'View ' + movie.title} onPress={() => navigation.navigate('Details', { id: movie.id })} style={{ width, gap: 8 }}>
+  return <Pressable accessible accessibilityRole="button" accessibilityLabel={'View ' + movie.title} accessibilityHint="Opens title details" testID={'movie-card-' + movie.id} onPress={() => navigation.navigate('Details', { id: movie.id })} style={{ width, gap: 8 }}>
     {movie.poster ? <Image source={{ uri: movie.poster }} style={{ width, height: width * 1.45, borderRadius: 18, backgroundColor: colors.surface }} /> : <View style={{ height: width * 1.45, backgroundColor: colors.surface, borderRadius: 18, justifyContent: 'center', padding: 15 }}><Text style={s.muted}>{movie.title}</Text></View>}
     <Text numberOfLines={2} style={{ color: colors.text, fontWeight: '700' }}>{movie.title}</Text>
-    <Text style={{ color: colors.muted, fontSize: 12 }}>{movie.release_date} · {movie.type === 'tv' ? 'Series' : 'Movie'}</Text>
+    <Text style={{ color: colors.muted, fontSize: 12 }}>{movie.release_date} · {movie.type === 'tv' ? 'Series' : movie.type === 'movie' ? 'Movie' : 'Title'}</Text>
   </Pressable>;
-}
-function Row({ title, movies }: { title: string; movies: Movie[] }) {
+});
+const Row = React.memo(function Row({ title, movies }: { title: string; movies: Movie[] }) {
   if (!movies.length) return null;
   return <View style={{ gap: 14 }}><Text style={[s.heading, { marginHorizontal: 20 }]}>{title}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 14 }}>{movies.map(movie => <Poster key={movie.id} movie={movie} />)}</ScrollView></View>;
-}
+});
 function CatalogStatus() {
   const { loading, error, movies, reload } = useStore();
   if (loading && !movies.length) return <View accessibilityLabel="Loading catalog" style={s.content}><ActivityIndicator color={colors.brand} /><View style={{ flexDirection: 'row', gap: 14 }}>{[1, 2, 3].map(i => <View key={i} style={{ flex: 1, height: 190, borderRadius: 18, backgroundColor: colors.surface }} />)}</View><Text style={s.muted}>Loading your movie catalog…</Text></View>;
@@ -40,12 +40,19 @@ export function HomeScreen() {
   const { movies, history, saved, loading, reload, libraryError } = useStore();
   const navigation = useNavigation<Navigation>();
   const { width } = useWindowDimensions();
-  const featured = movies.filter(m => m.featured).slice(0, 6);
-  const banners = featured.length ? featured : movies.slice(0, 5);
-  const likedGenres = new Set(movies.filter(m => saved.some(x => x.movie_id === m.id)).flatMap(m => m.genres));
-  const recommended = [...movies].sort((a, b) => b.genres.filter(g => likedGenres.has(g)).length - a.genres.filter(g => likedGenres.has(g)).length).slice(0, 12);
-  const latest = [...movies].sort((a, b) => b.release_date.localeCompare(a.release_date)).slice(0, 12);
-  const continuing = history.filter(h => h.position > 0 && h.position < h.duration - 10);
+  const banners = useMemo(() => {
+    const featured = movies.filter(m => m.featured).slice(0, 6);
+    return featured.length ? featured : movies.slice(0, 5);
+  }, [movies]);
+  const likedGenres = useMemo(() => {
+    const savedIds = new Set(saved.map(entry => entry.movie_id));
+    return new Set(movies.filter(movie => savedIds.has(movie.id)).flatMap(movie => movie.genres));
+  }, [movies, saved]);
+  const recommended = useMemo(() => [...movies].sort((a, b) => b.genres.filter(g => likedGenres.has(g)).length - a.genres.filter(g => likedGenres.has(g)).length).slice(0, 12), [movies, likedGenres]);
+  const latest = useMemo(() => [...movies].sort((a, b) => b.release_date.localeCompare(a.release_date)).slice(0, 12), [movies]);
+  const trending = useMemo(() => movies.filter(m => m.trending).slice(0, 12), [movies]);
+  const series = useMemo(() => movies.filter(m => m.type === 'tv').slice(0, 12), [movies]);
+  const continuing = useMemo(() => history.filter(h => h.position > 0 && h.position < h.duration - 10), [history]);
   return <ScrollView style={s.screen} contentContainerStyle={{ gap: 28, paddingBottom: 32 }} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.brand} />}>
     <CatalogStatus />
     <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>{banners.map(movie => <Pressable key={movie.id} accessibilityRole="button" accessibilityLabel={'View ' + movie.title} onPress={() => navigation.navigate('Details', { id: movie.id })} style={{ width, height: Math.min(width * 1.15, 500) }}>
@@ -60,9 +67,9 @@ export function HomeScreen() {
       const movie = movies.find(m => m.id === h.movie_id);
       return movie ? <Pressable key={h.movie_id + h.episode_id} style={s.card} onPress={() => navigation.navigate('Player', { id: movie.id, episodeId: h.episode_id || undefined })}><Text style={s.text}>{movie.title}{h.episode_id ? ' · Episode' : ''}</Text><Text style={s.muted}>{Math.floor(h.position / 60)} / {Math.floor(h.duration / 60)} min</Text><View style={{ height: 3, backgroundColor: colors.border }}><View style={{ height: 3, width: `${Math.min(100, h.position / h.duration * 100)}%`, backgroundColor: colors.brand }} /></View></Pressable> : null;
     })}</View>}
-    <Row title="Trending" movies={movies.filter(m => m.trending).slice(0, 12)} />
+    <Row title="Trending" movies={trending} />
     <Row title="Latest releases" movies={latest} /><Row title="Recommended for you" movies={recommended} />
-    <Row title="Series" movies={movies.filter(m => m.type === 'tv').slice(0, 12)} />
+    <Row title="Series" movies={series} />
   </ScrollView>;
 }
 export function CatalogScreen({ type, search = false }: { type?: 'movie' | 'tv'; search?: boolean }) {
@@ -70,31 +77,45 @@ export function CatalogScreen({ type, search = false }: { type?: 'movie' | 'tv';
   const [query, setQuery] = useState(''); const [genre, setGenre] = useState('');
   const { width } = useWindowDimensions();
   const columns = width >= 600 ? 4 : 2;
-  const results = filterCatalog(movies, query, genre, type);
+  const results = useMemo(() => filterCatalog(movies, query, genre, type), [movies, query, genre, type]);
   const categories = useMemo(() => [...new Set(movies.filter(m => !type || m.type === type).flatMap(m => m.genres))].sort(), [movies, type]);
-  return <FlatList key={columns} style={s.screen} numColumns={columns} data={results} keyExtractor={m => m.id}
+  const posterWidth = (width - 32 - 16 * (columns - 1)) / columns;
+  const renderPoster = React.useCallback(({ item }: { item: Movie }) => <Poster movie={item} width={posterWidth} />, [posterWidth]);
+  return <FlatList key={columns} testID="catalog-list" style={s.screen} numColumns={columns} data={results} keyExtractor={m => m.id}
+    initialNumToRender={columns * 4} maxToRenderPerBatch={columns * 4} windowSize={7}
     contentContainerStyle={{ padding: 16, gap: 18 }} columnWrapperStyle={{ gap: 16 }}
-    keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.brand} />}
+    keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.brand} />}
     ListHeaderComponent={<View style={{ gap: 18, paddingBottom: 18 }}><Text style={s.title}>{search ? 'Explore' : type === 'tv' ? 'Series' : 'Movies'}</Text>
-      <TextInput accessibilityLabel="Search movie catalog" placeholder="Titles, narrators, genres…" placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} style={s.input} returnKeyType="search" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>{['', ...categories].map(g => <Pressable key={g} style={[s.chip, genre === g && { borderColor: colors.brand }]} onPress={() => setGenre(g)}><Text style={s.text}>{g || 'All'}</Text></Pressable>)}</ScrollView><CatalogStatus /></View>}
-    ListEmptyComponent={!loading ? <Text style={s.muted}>No matching titles. Try another search or category.</Text> : null}
-    renderItem={({ item }) => <Poster movie={item} width={(width - 32 - 16 * (columns - 1)) / columns} />} />;
+      <TextInput testID="catalog-search-input" accessibilityLabel="Search movie catalog" placeholder="Titles, narrators, genres…" placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} style={s.input} returnKeyType="search" />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>{['', ...categories].map(g => <Pressable key={g} accessibilityRole="button" accessibilityLabel={'Filter category ' + (g || 'All')} accessibilityState={{ selected: genre === g }} style={[s.chip, genre === g && { borderColor: colors.brand }]} onPress={() => setGenre(g)}><Text style={s.text}>{g || 'All'}</Text></Pressable>)}</ScrollView><CatalogStatus />
+      {movies.length > 0 && <Text testID="catalog-result-count" accessibilityLiveRegion="polite" style={s.muted}>{results.length} {results.length === 1 ? 'title' : 'titles'}</Text>}
+    </View>}
+    ListEmptyComponent={!loading && movies.length > 0 ? <Text style={s.muted}>No matching titles. Try another search or category.</Text> : null}
+    renderItem={renderPoster} />;
 }
 export function FavoritesScreen() {
-  const { movies, saved, session, libraryError, reloadLibrary } = useStore();
+  const { movies, saved, session, libraryError, reloadLibrary, loading } = useStore();
   const navigation = useNavigation<Navigation>();
   const [kind, setKind] = useState<'favorite' | 'watchlist'>('favorite');
   const { width } = useWindowDimensions();
   useFocusEffect(React.useCallback(() => { void reloadLibrary(); }, [reloadLibrary]));
-  const results = movies.filter(m => saved.some(x => x.movie_id === m.id && x.kind === kind));
-  return <ScrollView style={s.screen} contentContainerStyle={s.content}><Text style={s.title}>Your collection</Text>
-    <View style={{ flexDirection: 'row', gap: 8 }}>{(['favorite', 'watchlist'] as const).map(k => <Pressable key={k} style={[s.chip, kind === k && { borderColor: colors.brand }]} onPress={() => setKind(k)}><Text style={s.text}>{k === 'favorite' ? 'Favorites' : 'Watchlist'}</Text></Pressable>)}</View>
-    {!session ? <Button title="Sign in to save movies" onPress={() => navigation.navigate('Profile')} /> : <>
-      {!!libraryError && <Text style={s.error}>{libraryError}</Text>}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>{results.map(m => <Poster key={m.id} movie={m} width={(width - 56) / 2} />)}</View>
-      {!results.length && <Text style={s.muted}>Save a title from its details page to see it here.</Text>}</>}
-  </ScrollView>;
+  const columns = width >= 600 ? 4 : 2;
+  const results = useMemo(() => {
+    const savedIds = new Set(saved.filter(entry => entry.kind === kind).map(entry => entry.movie_id));
+    return movies.filter(movie => savedIds.has(movie.id));
+  }, [movies, saved, kind]);
+  const posterWidth = (width - 40 - 16 * (columns - 1)) / columns;
+  const renderPoster = React.useCallback(({ item }: { item: Movie }) => <Poster movie={item} width={posterWidth} />, [posterWidth]);
+  return <FlatList key={columns} testID="collection-list" style={s.screen} contentContainerStyle={s.content}
+    numColumns={columns} columnWrapperStyle={{ gap: 16 }} data={session ? results : []} keyExtractor={movie => movie.id}
+    initialNumToRender={columns * 4} maxToRenderPerBatch={columns * 4} windowSize={7} renderItem={renderPoster}
+    ListHeaderComponent={<View style={{ gap: 18 }}><Text style={s.title}>Your collection</Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>{(['favorite', 'watchlist'] as const).map(k => <Pressable key={k} accessibilityRole="button" accessibilityLabel={k === 'favorite' ? 'Show favorites' : 'Show watchlist'} accessibilityState={{ selected: kind === k }} style={[s.chip, kind === k && { borderColor: colors.brand }]} onPress={() => setKind(k)}><Text style={s.text}>{k === 'favorite' ? 'Favorites' : 'Watchlist'}</Text></Pressable>)}</View>
+      {!session ? <Button title="Sign in to save movies" onPress={() => navigation.navigate('Profile')} /> : <>
+        {!!libraryError && <Text style={s.error}>{libraryError}</Text>}<CatalogStatus />
+      </>}
+    </View>}
+    ListEmptyComponent={session && !loading && movies.length > 0 ? <Text style={s.muted}>Save a title from its details page to see it here.</Text> : null} />;
 }
 export function DetailsScreen({ route, navigation }: NativeStackScreenProps<RootStack, 'Details'>) {
   const { movies, saved, toggleSaved, session } = useStore();
@@ -118,7 +139,7 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
   if (!movie) return <View style={s.content}>{loading ? <ActivityIndicator color={colors.brand} /> : <Text style={s.error}>{error || 'This title is not available.'}</Text>}</View>;
   return <ScrollView style={s.screen} contentContainerStyle={{ paddingBottom: 30 }}>
     {movie.image && <Image source={{ uri: movie.image }} style={{ width: '100%', height: 270 }} />}
-    <View style={s.content}><Text style={s.title}>{movie.title}</Text><Text style={s.muted}>{movie.release_date} · {movie.type === 'tv' ? 'Series' : 'Movie'} · {movie.genres.join(', ')}</Text>
+    <View style={s.content}><Text testID="movie-details-title" style={s.title}>{movie.title}</Text><Text style={s.muted}>{movie.release_date} · {movie.type === 'tv' ? 'Series' : movie.type === 'movie' ? 'Movie' : 'Title'} · {movie.genres.join(', ')}</Text>
       {!!error && <Text style={s.error}>{error}</Text>}{!!movie.description && <Text style={s.text}>{movie.description}</Text>}
       {!!movie.narrator && <Text style={s.muted}>Narrator: {movie.narrator}</Text>}
       <Button title="Watch now" disabled={loading || !!error || !canStream(movie)} onPress={() => navigation.navigate('Player', { id: movie.id })} />

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCatalog } from '../shared/catalog.ts';
+import { catalogOptionsFor, createCatalog } from '../shared/catalog.ts';
+import { canStream, canDownload } from '../shared/domain.mjs';
 
 function backend(rows, failure = null) {
   const calls = [];
@@ -38,4 +39,18 @@ test('backend failures surface instead of returning fake movies or empty success
   await assert.rejects(service.list(), /network unavailable/);
   await assert.rejects(service.get('id'), /network unavailable/);
   await assert.rejects(createCatalog(null).list(), /not configured/);
+});
+test('explicit legacy catalog mode reads real metadata but grants no playback rights', async () => {
+  const client = backend([{ id: 'legacy', title: 'Existing legacy title', tmdb_type: 'tv', tmdb_overview: 'Existing description' }, { id: 'hidden', title: 'Hidden', published: false }]);
+  const catalog = createCatalog(client, catalogOptionsFor('https://byelcaamxxvfltnegxby.supabase.co'));
+  const rows = await catalog.list();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].type, 'tv');
+  assert.equal(rows[0].description, 'Existing description');
+  assert.equal(canStream(rows[0]), false);
+  assert.equal(canDownload(rows[0]), false);
+  assert.equal(await catalog.get('hidden'), null);
+  assert.equal((await catalog.get('legacy')).id, 'legacy');
+  assert.equal(client.calls.some(c => c[0] === 'published'), false);
+  assert.equal(catalogOptionsFor('https://otherproject.supabase.co').mode, 'published');
 });

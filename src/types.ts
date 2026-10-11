@@ -9,7 +9,7 @@ export interface Movie {
   release_date: string;
   modifiedAt: string;
   video_url: string;
-  type: 'movie' | 'tv';
+  type: 'movie' | 'tv' | 'unknown';
   description?: string;
   published?: boolean;
   featured?: boolean;

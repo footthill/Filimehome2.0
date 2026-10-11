@@ -39,3 +39,13 @@ test('series episode IDs cannot be duplicated', () => {
   const episode = { id: 's1e1', title: 'Episode 1', season: 1, number: 1, video_url: 'https://media.example/e.mp4', streaming_authorized: true };
   assert.throws(() => validateMovieDraft({ ...row, episodes: [episode, episode] }));
 });
+test('legacy metadata uses existing artwork and classification without inventing rights or type', () => {
+  const movie = normalizeMovie({ id: 'legacy', poster_large: 'https://media.example/poster.jpg', backdrop: 'https://media.example/backdrop.jpg', tmdb_overview: 'Stored description', tmdb_type: 'tv', Downloadurls: ['https://media.example/unapproved.mp4'] });
+  assert.equal(movie.poster, 'https://media.example/poster.jpg');
+  assert.equal(movie.image, 'https://media.example/backdrop.jpg');
+  assert.equal(movie.type, 'tv');
+  assert.equal(movie.description, 'Stored description');
+  assert.equal(movie.video_url, '');
+  assert.equal(canStream(movie), false);
+  assert.equal(normalizeMovie({ title: 'Unclassified' }).type, 'unknown');
+});

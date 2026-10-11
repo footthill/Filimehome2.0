@@ -100,7 +100,7 @@ export function MovieDetail({ movies, watchlist, onToggleWatchlist }: MovieDetai
           {similarMovies.length > 0 && (
             <div className="space-y-6 pt-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-black uppercase italic tracking-tighter">Similar to this {movie.type}</h3>
+                <h3 className="text-lg font-black uppercase italic tracking-tighter">Similar to this {movie.type === 'unknown' ? 'title' : movie.type}</h3>
               </div>
               <div className="flex gap-4 overflow-x-auto no-scrollbar pb-6 -mx-2 px-2">
                 {similarMovies.map(similar => (

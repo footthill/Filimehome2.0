@@ -86,7 +86,7 @@ export function AdminView() {
     <form onSubmit={save} className="grid sm:grid-cols-2 gap-5">
       <label>Movie ID (optional if database generates it)<input className={input} disabled={editing} value={draft.id} onChange={e => setDraft({ ...draft, id: e.target.value })} /></label>
       <label>Title<input className={input} required maxLength={200} value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} /></label>
-      <label>Type<select className={input} value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value as Movie['type'] })}><option value="movie">Movie</option><option value="tv">Series</option></select></label>
+      <label>Type<select className={input} value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value as Movie['type'] })}><option value="unknown" disabled>Choose type</option><option value="movie">Movie</option><option value="tv">Series</option></select></label>
       {(['poster', 'image', 'video_url', 'download_url', 'release_date', 'narrator', 'country'] as const).map(field => <label key={field}>{field.replaceAll('_', ' ')}<input className={input} value={draft[field] || ''} onChange={e => setDraft({ ...draft, [field]: e.target.value })} /></label>)}
       <label>Poster upload<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e => void upload(e.target.files?.[0])} /></label>
       <label>Description<textarea className={input} value={draft.description || ''} onChange={e => setDraft({ ...draft, description: e.target.value })} /></label>

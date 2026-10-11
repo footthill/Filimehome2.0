@@ -9,14 +9,16 @@ export function secureUrl(value) {
 export function normalizeMovie(row) {
   const text = value => typeof value === 'string' ? value : '';
   const source = row && typeof row === 'object' ? row : {};
+  const poster = [source.poster_large, source.poster, source.poster_medium, source.poster_small].map(secureUrl).find(Boolean) || '';
+  const type = [source.type, source.tmdb_type].find(value => value === 'movie' || value === 'tv') || 'unknown';
   return {
     id: String(source.id ?? ''), title: text(source.title),
-    poster: secureUrl(source.poster), image: secureUrl(source.image || source.poster),
-    description: text(source.description),
+    poster, image: [source.backdrop_large, source.backdrop, source.image, poster].map(secureUrl).find(Boolean) || '',
+    description: text(source.description) || text(source.tmdb_overview),
     genres: Array.isArray(source.genres) ? source.genres.filter(g => typeof g === 'string') : [],
     narrator: text(source.narrator), country: text(source.country),
     release_date: text(source.release_date), modifiedAt: text(source.modifiedAt),
-    type: source.type === 'tv' ? 'tv' : 'movie',
+    type,
     published: source.published === true,
     featured: source.featured === true, trending: source.trending === true,
     streaming_authorized: source.streaming_authorized === true,

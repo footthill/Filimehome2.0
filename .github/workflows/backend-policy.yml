@@ -26,3 +26,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Execute migration and test RLS using anonymous, user and admin claims
         run: psql -h 127.0.0.1 -U postgres -d postgres -f tests/rls.sql
+      - name: Validate owner read-only audit SQL against isolated fixture schemas
+        run: psql -h 127.0.0.1 -U postgres -d postgres -f supabase/audits/production_readonly.sql
