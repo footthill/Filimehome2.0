@@ -1,5 +1,11 @@
 # FilimeHome 2.0 implementation and verification
 
+For the verified live website project, exact public configuration and existing
+4,055-row catalog integration, see [Live backend](LIVE_BACKEND.md). Browsing now
+supports that existing legacy schema without a database migration. The original
+unconfigured previews below are historical; use the latest configured APK link
+in the live-backend guide.
+
 ## Repository audit
 
 The original project is a React 19/Vite 6/TypeScript website, Express server,
@@ -33,8 +39,9 @@ fictional; errors were swallowed as empty results. These behaviors are corrected
   seven-day local expiry, status/content-type checks, removal and deletion on sign-out.
 - Admin web editor for metadata, categories, poster uploads, series episodes,
   URLs, quality variants, subtitle metadata and publish/unpublish.
-- Additive Supabase migration: publication/rights metadata, account tables,
-  row-level security, admin-only writes and poster storage policies.
+- Draft Supabase migration: publication/rights metadata, account tables,
+  replacement catalog policies, ownership guards, admin-only writes and poster
+  storage policies. It has not been applied to production.
 - Private Gemini/TMDB keys now stay on Express. API requests require a verified
   Supabase user, bounded input and a per-user rate limit. Recommendations use
   actual catalog titles and do not require an AI key.
@@ -68,11 +75,12 @@ no native application source changed after that compilation.
 - [Passed Android UI/back checks](https://github.com/footthill/Filimehome2.0/actions/runs/38070773969)
 - [Passed PostgreSQL policy tests](https://github.com/footthill/Filimehome2.0/actions/runs/38071158565)
 
-The provided APK embeds no Supabase values and displays a configuration error.
-Configure the public backend variables and rebuild before using live catalog,
-authentication or content. Playback, subtitles, account writes and downloads have
-not been exercised against live authorized content. The web watchlist remains
-device-local for compatibility; the Android library syncs to Supabase. These checks use no live Supabase values.
+Those historical previews embedded no Supabase values and displayed a configuration
+error. The latest configured build uses the verified website project and real catalog;
+see [Live backend](LIVE_BACKEND.md) for current results. Playback, subtitles, account
+writes and downloads have not been exercised against live authorized content. The web
+watchlist remains device-local. Android library synchronization is implemented in
+source but its required tables are unavailable through the live public API.
 
 At implementation time this workspace could not install dependencies:
 the configured npm proxy returned `EPERM` / connection failures. Local web/mobile
@@ -83,10 +91,14 @@ standalone preview APK; an artifact is only verified after a successful workflow
 
 ## Required backend setup
 
-1. Review the existing Supabase schema and back up its configuration. Apply
-   `supabase/migrations/202610100001_filimehome.sql` through the SQL editor or CLI.
+1. **Do not apply the draft migration just to enable catalog browsing.** First
+   obtain the read-only deployed schema/RLS report linked in `docs/LIVE_BACKEND.md`.
+   Review `supabase/migrations/202610100001_filimehome.sql` against that report and
+   the website's existing account model before any production deployment.
    It preserves movie rows, adds fields, and **replaces existing moviesv2 policies**
-   because permissive legacy policies would bypass the new access checks.
+   and defaults existing rows to unpublished. Applying it without a publication
+   plan could hide the live catalog. Permissive legacy policies also need review
+   because they can bypass new access checks.
    Existing unrelated policies on pre-existing account tables and `storage.objects`
    are constrained by restrictive ownership/admin guards and should still be audited. This migration has not been executed against the live project.
 2. Configure only the public URL/publishable (anon) key in root `.env` and mobile
@@ -113,10 +125,9 @@ standalone preview APK; an artifact is only verified after a successful workflow
 
 ## Android build
 
-For the latest version-code-2 universal testing APK, verified signing/checksum,
+For the latest configured universal testing APK, verified signing/checksum,
 API 35 fresh-install/update/navigation results and Samsung troubleshooting, see
-[Android installation](ANDROID_INSTALLATION.md). Its successful workflow is
-[38073572979](https://github.com/footthill/Filimehome2.0/actions/runs/38073572979).
+[Android installation](ANDROID_INSTALLATION.md).
 The download in that guide supersedes the earlier preview artifact above.
 
 Use Node 22. Install web and mobile dependencies, use the committed mobile
@@ -134,9 +145,14 @@ npm run typecheck
 npm run export:android
 ```
 
-GitHub Actions reads public `EXPO_PUBLIC_SUPABASE_URL` and
-`EXPO_PUBLIC_SUPABASE_ANON_KEY` repository variables. It can build without them,
-but that APK will display a configuration error instead of a functional catalog.
+GitHub Actions validates the verified public configuration in
+`config/supabase-public.json`, or uses a complete pair of repository-variable
+overrides: `EXPO_PUBLIC_SUPABASE_URL` and
+`EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`EXPO_PUBLIC_SUPABASE_ANON_KEY` remains an
+alias). No repository-variable change is required for the existing project.
+The workflow rejects secret/service-role keys and tests real catalog access before
+native compilation. These checks apply to this CI workflow; local and EAS builds
+must also use public client credentials. See [Live backend](LIVE_BACKEND.md).
 Its native release build uses the Expo template's debug signing key
 for direct preview installation, not Play Store distribution. The workflow explicitly
 builds all four Android ABIs, aligns/signs the standalone APK, verifies signing,
@@ -152,8 +168,9 @@ the preview environment and run `eas build --platform android --profile preview`
 from `mobile/`. EAS signing can be managed in the authorized account. Do not send
 passwords, keystores or tokens in chat. Package: `com.footthill.filimehome`.
 Name: `FilimeHome 2.0`. The repository lacks launcher artwork; supply/approve an
-icon before release. Real accounts, catalog, playback, downloads, access policies
-and physical-device navigation still require integration testing with configured services.
+icon before release. Real account writes, playback, downloads and deployed access
+policies remain unverified. Catalog integration results and physical-device versus
+emulator limitations are documented in the linked guides.
 
 The dependency audit after nonbreaking web lockfile updates reported two remaining
 findings (one low and one moderate); the initial mobile install reported 35

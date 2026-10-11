@@ -1,36 +1,44 @@
 # Android 15 installation and diagnosis
 
+The user confirmed that version 2 installed and launched successfully on the
+Samsung Galaxy A05 running Android 15. Version 3 below adds the verified public
+Supabase configuration and existing live catalog. Its physical-device update has
+not yet been tested; its API 35 emulator update and fresh-install checks passed.
+
 The Samsung Galaxy A05 installation message **"App not installed" does not identify
 the failure reason**. A package-manager result from that device is required to
 distinguish a signing conflict, damaged download, storage problem or device policy.
 An emulator result cannot establish the exact cause of a physical-device failure.
 
-## Corrected universal testing APK
+## Configured universal testing APK — version 3
 
-- [Successful build and API 35 tests](https://github.com/footthill/Filimehome2.0/actions/runs/38073572979).
-- [Download APK artifact ZIP](https://github.com/footthill/Filimehome2.0/actions/runs/38073572979/artifacts/11678032534).
-- Extract and open **`FilimeHome-2.0-android15-universal.apk`** (71,221,207 bytes).
-- APK SHA-256: `2866c21c2e3707807d4cb05d4e3694fcac00641754da44bbba5fdd9b16a96fc8`.
+- [Successful build and API 35 tests](https://github.com/footthill/Filimehome2.0/actions/runs/38155017001).
+- [Download APK artifact ZIP](https://github.com/footthill/Filimehome2.0/actions/runs/38155017001/artifacts/11708288100).
+- Extract and open **`FilimeHome-2.0-connected-android15.apk`** (71,225,303 bytes).
+- APK SHA-256: `c4712d165972d08b0b8781b127692be62283953c0122f50eec2ac32096e0587f`.
 - Signing certificate SHA-256: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
-- Actual APK manifest: package `com.footthill.filimehome`, version code **2**, minimum SDK **24**, target SDK **36**. No test-only/debuggable flag or split package.
+- Actual APK manifest: package `com.footthill.filimehome`, version code **3**, minimum SDK **24**, target SDK **36**. No test-only/debuggable flag or split package.
 - Actual packaged ABIs: **arm64-v8a, armeabi-v7a, x86, x86_64**.
 - Signature verification, ZIP CRC integrity and 16 KB native-library ZIP alignment checks passed.
-- [Package-manager logs, manifest, certificate checks and UI evidence](https://github.com/footthill/Filimehome2.0/actions/runs/38073572979/artifacts/11677358576).
+- [Package-manager logs, manifest, certificate checks, real catalog report and UI evidence](https://github.com/footthill/Filimehome2.0/actions/runs/38155017001/artifacts/11707834457).
 
-Build source commit: `77aa393be1f84e75cec22c67022c22a25dea7995`.
-Later documentation/device-diagnostic commits do not change the compiled native source.
+Build source commit: `0f3f6c6a24d0e085dc27b095509a2746dede1890`.
+Later documentation commits do not change the compiled native source.
 The APK uses the existing Expo template preview certificate, with v1/v2/v3 signing
 enabled and v2 verification required. The release-mode app is not debuggable.
 This known testing certificate is for preview installation only; a production
 release requires an independently controlled release signing identity. No private
 keystore is included in the uploaded artifacts.
 
-The API 35 Google APIs x86_64 emulator used 4 KB memory pages. The original APK
-installed successfully, and the new APK updated it successfully with the same
+The API 35 Google APIs x86_64 emulator used 4 KB memory pages. The prior version 2
+APK installed successfully, and version 3 updated it successfully with the same
 certificate and increased version code. Home, Movies, Series, Search, Favorites,
 Profile and hardware-back checks passed. On that disposable emulator the test
 then removed the app, freshly installed the new APK, and verified cold launch
-and a running application process. No physical-device data was removed.
+and a running application process. The app displayed **4,055 real catalog records**
+on both installations. Real search for **Go For Broke**, the **Action** category,
+movie details, and the disabled playback state for that unapproved title passed.
+Playback itself was not tested. No physical-device data was removed.
 
 The GitHub Actions download is a **ZIP containing an APK**. Download the artifact,
 extract it, and install the `.apk` file. Renaming the ZIP to `.apk` does not make
@@ -40,7 +48,7 @@ for example with `sha256sum path/to/filimehome.apk` on Linux or
 
 On the Samsung phone: sign into GitHub if prompted, download the artifact, open
 it in **My Files**, select **Extract**, then open the extracted
-`FilimeHome-2.0-android15-universal.apk`. The same folder includes `SHA256SUMS`
+`FilimeHome-2.0-connected-android15.apk`. The same folder includes `SHA256SUMS`
 and `metadata.json`. Use the filename and checksum to identify the correct file.
 
 On the phone, use Android's ordinary installation flow and its per-source
@@ -156,6 +164,8 @@ Record the actual device page size; Android 15 does not imply every device uses
 16 KB memory pages. Static alignment checks and an emulator with another page
 size cannot establish native behavior on every 16 KB device.
 
-Live Supabase authentication, catalog, authorized playback and downloads still
-require the documented backend configuration and content rights. Installation
-and navigation checks do not verify those live services.
+This configured APK passed real catalog, search, category and detail checks.
+Live Supabase authentication, profile/library/history synchronization, deployed
+RLS policies, authorized playback and downloads remain unverified or unavailable
+as detailed in [Live backend](LIVE_BACKEND.md). The existing schema has no explicit
+authorized playback sources; no rights or media sources were invented.
