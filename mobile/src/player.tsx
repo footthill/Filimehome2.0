@@ -5,7 +5,8 @@ import { VideoView, useVideoPlayer, type VideoSource, type SubtitleTrack } from 
 import * as ScreenOrientation from 'expo-screen-orientation';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { Movie } from '../../src/types';
-import { canStream, resumePosition } from '../../shared/domain.mjs';
+import { canStream, resumePosition, videoContentType } from '../../shared/domain.mjs';
+import { replacePlaybackSource, type PlaybackIntent } from '../../shared/playback.mjs';
 import { catalog } from './backend';
 import { readDownloads } from './downloads';
 import type { RootStack } from './navigation';
@@ -49,13 +50,17 @@ export function PlayerScreen({ route }: NativeStackScreenProps<RootStack, 'Playe
 function PlaybackView({ playback }: { playback: Playback }) {
   const { history, saveProgress, session, libraryError } = useStore();
   const [error, setError] = useState(''); const [status, setStatus] = useState('loading');
-  const [subtitles, setSubtitles] = useState<SubtitleTrack[]>([]); const [selectedQuality, setSelectedQuality] = useState('Original');
+  const [subtitles, setSubtitles] = useState<SubtitleTrack[]>([]);
+  const [selectedSource, setSelectedSource] = useState({ label: 'Original', uri: playback.uri });
+  const [replacing, setReplacing] = useState(false);
+  const replacementActive = useRef(false); const replacementRequested = useRef(false);
+  const retryIntent = useRef<PlaybackIntent | null>(null);
   const [position, setPosition] = useState(0); const [duration, setDuration] = useState(0);
   const resume = useRef(history.find(h => h.movie_id === playback.movie.id && h.episode_id === playback.episodeId));
   const latestProgress = useRef({ position: resume.current?.position ?? 0, duration: resume.current?.duration ?? 0 });
   const initialized = useRef(false); const lastSync = useRef(0); const autoplay = useRef(false);
   const save = useRef(saveProgress); save.current = saveProgress;
-  const source = (uri: string): VideoSource => ({ uri, contentType: /\.m3u8(?:\?|$)/i.test(uri) ? 'hls' : 'auto', metadata: { title: playback.movie.title } });
+  const source = (uri: string): VideoSource => ({ uri, contentType: playback.offline ? 'progressive' : videoContentType(uri) || 'auto', metadata: { title: playback.movie.title } });
   const player = useVideoPlayer(source(playback.uri), p => { p.timeUpdateEventInterval = 1; });
   const flush = () => {
     const progress = latestProgress.current;
@@ -66,7 +71,7 @@ function PlaybackView({ playback }: { playback: Playback }) {
     AsyncStorage.getItem('filimehome.autoplay').then(value => {
       if (!active) return;
       autoplay.current = value === 'true';
-      if (autoplay.current && player.status === 'readyToPlay') player.play();
+      if (autoplay.current && !replacementRequested.current && player.status === 'readyToPlay') player.play();
     }).catch(() => { /* Safe default: no autoplay. */ });
     const statusSubscription = player.addListener('statusChange', event => {
       setStatus(event.status);
@@ -86,7 +91,12 @@ function PlaybackView({ playback }: { playback: Playback }) {
       setPosition(event.currentTime); setDuration(player.duration);
       if (Date.now() - lastSync.current > 10000) { lastSync.current = Date.now(); flush(); }
     });
-    const appState = AppState.addEventListener('change', state => { if (state !== 'active') { player.pause(); flush(); } });
+    const appState = AppState.addEventListener('change', state => {
+      if (state !== 'active') {
+        if (retryIntent.current) retryIntent.current.playing = false;
+        player.pause(); flush();
+      }
+    });
     // A local file may already be ready before statusChange subscribes.
     if (player.status === 'readyToPlay') {
       player.currentTime = resumePosition(latestProgress.current.position, player.duration);
@@ -95,11 +105,23 @@ function PlaybackView({ playback }: { playback: Playback }) {
     return () => { active = false; flush(); statusSubscription.remove(); timeSubscription.remove(); appState.remove(); };
   }, [player]);
   const quality = async (label: string, uri: string) => {
-    const current = player.currentTime; const wasPlaying = player.playing;
+    if (replacementActive.current) return;
+    replacementActive.current = true; replacementRequested.current = true;
+    setReplacing(true); setError(''); setStatus('loading');
+    setSelectedSource({ label, uri });
+    const intent = retryIntent.current || {
+      position: initialized.current ? player.currentTime : resumePosition(latestProgress.current.position, player.duration),
+      playing: player.playing,
+    };
+    retryIntent.current = intent;
+    // Replacement owns seek and playback intent; initial-load autoplay must not
+    // override a paused retry when the new source reports ready.
+    initialized.current = true;
     try {
-      await player.replaceAsync(source(uri)); player.currentTime = current;
-      if (wasPlaying) player.play(); setSelectedQuality(label);
-    } catch (e) { setError(message(e)); }
+      await replacePlaybackSource(player, source(uri), intent);
+      retryIntent.current = null; setStatus(player.status);
+    } catch (e) { setError(message(e)); setStatus('error'); }
+    finally { replacementActive.current = false; setReplacing(false); }
   };
   return <ScrollView style={s.screen} contentContainerStyle={s.content}>
     <Text style={s.heading}>{playback.movie.title}</Text>
@@ -107,12 +129,12 @@ function PlaybackView({ playback }: { playback: Playback }) {
       onFullscreenEnter={() => { void ScreenOrientation.unlockAsync().catch(() => {}); }}
       onFullscreenExit={() => { void ScreenOrientation.unlockAsync().catch(() => {}); }} />
     {status === 'loading' && <ActivityIndicator color={colors.brand} />}
-    {!!error && <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Reload video" onPress={() => void quality(selectedQuality, playback.uri)} /></>}
+    {!!error && <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Reload video" disabled={replacing} onPress={() => void quality(selectedSource.label, selectedSource.uri)} /></>}
     <Text style={s.muted}>{Math.floor(position / 60)}:{String(Math.floor(position % 60)).padStart(2, '0')} / {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2, '0')}</Text>
     <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Button title="−10 seconds" onPress={() => { player.currentTime = Math.max(0, player.currentTime - 10); }} /></View><View style={{ flex: 1 }}><Button title="+10 seconds" onPress={() => { player.currentTime = Math.min(player.duration, player.currentTime + 10); }} /></View></View>
     <Button title="Play / Pause" onPress={() => player.playing ? player.pause() : player.play()} />
     {!session && <Text style={s.muted}>Sign in to save playback progress.</Text>}{!!libraryError && <Text style={s.error}>{libraryError}</Text>}
-    {!playback.offline && !playback.episodeId && !!playback.movie.qualities?.length && <><Text style={s.heading}>Video quality · {selectedQuality}</Text><Button title="Original / adaptive" onPress={() => void quality('Original', playback.uri)} />{playback.movie.qualities.map(q => <Button key={q.label} title={q.label} onPress={() => void quality(q.label, q.url)} />)}</>}
+    {!playback.offline && !playback.episodeId && !!playback.movie.qualities?.length && <><Text style={s.heading}>Video quality · {selectedSource.label}</Text><Button title="Original / adaptive" disabled={replacing} onPress={() => void quality('Original', playback.uri)} />{playback.movie.qualities.map(q => <Button key={q.label} title={q.label} disabled={replacing} onPress={() => void quality(q.label, q.url)} />)}</>}
     {subtitles.length > 0 ? <><Text style={s.heading}>Subtitles</Text><Button title="Subtitles off" onPress={() => { player.subtitleTrack = null; }} />{subtitles.map(track => <Button key={track.id} title={track.label || track.language || 'Subtitle'} onPress={() => { player.subtitleTrack = track; }} />)}</> : <Text style={s.muted}>This source has no selectable embedded subtitles. Android supports subtitles provided by the stream; external subtitle files require packaging into HLS.</Text>}
   </ScrollView>;
 }
