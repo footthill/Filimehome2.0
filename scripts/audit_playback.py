@@ -67,7 +67,7 @@ for path in re.findall(r'(?:src|href)=["\x27]([^"\x27]+\.js(?:\?[^"\x27]*)?)["\x
     url = urllib.parse.urljoin('https://filimehome.com', path)
     if urllib.parse.urlsplit(url).netloc == 'filimehome.com':
         asset_urls.add(url)
-needles = ['Downloadurls', 'downloadurls', 'hosted', 'm3u8', 'video/mp4', 'iframe', 'react-player', 'jwplayer', 'Hls(', 'jsxs("video"', 'jsx("video"']
+needles = ['Downloadurls', 'downloadurls', 'watchUrl', 'function IT', 'hosted', 'm3u8', '.mpd', 'video/mp4', 'iframe', 'react-player', 'jwplayer', 'dashjs', 'shaka', 'Hls(', 'jsxs("video"', 'jsx("video"']
 for url in sorted(asset_urls)[:12]:
     code, source = read(url)
     excerpts = {}
@@ -75,7 +75,8 @@ for url in sorted(asset_urls)[:12]:
         for needle in needles:
             hits = list(re.finditer(re.escape(needle), source))
             if hits:
-                excerpts[needle] = {'count': len(hits), 'contexts': [redact(source[max(0, m.start()-450):m.end()+1000]) for m in hits[:8]]}
+                before = 6000 if needle in ['jsx("video"', 'jsxs("video"'] else 450
+                excerpts[needle] = {'count': len(hits), 'contexts': [redact(source[max(0, m.start()-before):m.end()+1000]) for m in hits[:8]]}
     report['assets'].append({'url': url, 'status': code, 'sha256': hashlib.sha256(source.encode()).hexdigest(), 'excerpts': excerpts})
 
 headers = {'apikey': config['publicKey'], 'Authorization': 'Bearer ' + config['publicKey']}

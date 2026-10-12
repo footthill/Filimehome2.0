@@ -147,7 +147,7 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
       <Button title={saved.some(x => x.movie_id === movie.id && x.kind === 'favorite') ? 'Remove favorite' : 'Add to favorites'} disabled={busy} onPress={() => void save('favorite')} />
       <Button title={saved.some(x => x.movie_id === movie.id && x.kind === 'watchlist') ? 'Remove from watchlist' : 'Add to watchlist'} disabled={busy} onPress={() => void save('watchlist')} />
       {canDownload(movie) && <Button title={busy ? `Downloading ${Math.round(progress * 100)}%` : 'Download authorized MP4'} disabled={busy || !!error} onPress={() => void download()} />}
-      {!!movie.episodes?.length && <><Text style={s.heading}>Episodes</Text>{movie.episodes.map(e => <Button key={e.id} title={`S${e.season} E${e.number} · ${e.title}`} disabled={loading || !!error || !e.streaming_authorized || !e.video_url} onPress={() => navigation.navigate('Player', { id: movie.id, episodeId: e.id })} />)}</>}
+      {!!movie.episodes?.length && <><Text style={s.heading}>Episodes</Text>{movie.episodes.map(e => <Button key={e.id} title={`S${e.season} E${e.number} · ${e.title}`} disabled={loading || !!error || !movie.published || !e.streaming_authorized || !e.video_url} onPress={() => navigation.navigate('Player', { id: movie.id, episodeId: e.id })} />)}</>}
     </View><Row title="More like this" movies={movies.filter(m => m.id !== movie.id && m.genres.some(g => movie.genres.includes(g))).slice(0, 12)} />
   </ScrollView>;
 }
