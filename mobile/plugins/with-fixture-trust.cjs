@@ -14,7 +14,7 @@ module.exports = config => {
     fs.mkdirSync(path.join(res, 'raw'), { recursive: true });
     fs.mkdirSync(path.join(res, 'xml'), { recursive: true });
     fs.copyFileSync(process.env.FILIMEHOME_FIXTURE_CA, path.join(res, 'raw/fixture_ca.pem'));
-    fs.writeFileSync(path.join(res, 'xml/fixture_network_security.xml'), '<network-security-config><base-config cleartextTrafficPermitted="false"><trust-anchors><certificates src="system" /></trust-anchors></base-config><domain-config cleartextTrafficPermitted="false"><domain>127.0.0.1</domain><trust-anchors><certificates src="@raw/fixture_ca" /></trust-anchors></domain-config></network-security-config>');
+    fs.writeFileSync(path.join(res, 'xml/fixture_network_security.xml'), '<network-security-config><base-config cleartextTrafficPermitted="false"><trust-anchors><certificates src="system" /></trust-anchors></base-config><domain-config cleartextTrafficPermitted="false"><domain includeSubdomains="false">127.0.0.1</domain><trust-anchors><certificates src="@raw/fixture_ca" /></trust-anchors></domain-config></network-security-config>');
     return mod;
   }]);
 };
