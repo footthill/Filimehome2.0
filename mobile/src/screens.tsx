@@ -3,31 +3,53 @@ import { ActivityIndicator, Alert, FlatList, Image, Pressable, RefreshControl, S
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Movie } from '../../src/types';
 import { canDownload, canStream, filterCatalog } from '../../shared/domain.mjs';
 import { catalog, requireBackend } from './backend';
 import { clearDownloads, downloadMovie, readDownloads, removeDownload, type Download } from './downloads';
-import type { RootStack } from './navigation';
+import type { RootStack, TabStack } from './navigation';
 import { useStore } from './store';
 import { colors, styles as s } from './theme';
 
 type Navigation = NativeStackNavigationProp<RootStack>;
-export const message = (error: unknown) => error instanceof Error ? error.message : 'The request failed. Please try again.';
-export function Button({ title, onPress, disabled = false }: { title: string; onPress: () => void; disabled?: boolean }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={title} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={[s.button, disabled && { opacity: 0.45 }]}><Text style={s.buttonText}>{title}</Text></Pressable>;
+function useTabContentPadding() {
+  const { bottom } = useSafeAreaInsets();
+  return Math.max(112, Math.max(bottom, 12) + 64 + 24);
 }
-const Poster = React.memo(function Poster({ movie, width = 132 }: { movie: Movie; width?: number }) {
+export const message = (error: unknown) => error instanceof Error ? error.message : 'The request failed. Please try again.';
+export function Button({ title, onPress, disabled = false, secondary = false }: { title: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={title} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={[s.button, secondary && { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, disabled && { opacity: 0.45 }]}><Text style={s.buttonText}>{title}</Text></Pressable>;
+}
+function Artwork({ uri, title, style }: { uri?: string; title: string; style: import('react-native').StyleProp<import('react-native').ImageStyle> }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [uri]);
+  return uri && !failed ? <Image source={{ uri }} accessibilityLabel={title} resizeMode="cover" onError={() => setFailed(true)} style={style} />
+    : <View style={[style, { backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }]}><Ionicons name="film-outline" color={colors.muted} size={32} /><Text numberOfLines={2} style={[s.muted, { padding: 12, textAlign: 'center' }]}>{title}</Text></View>;
+}
+const Poster = React.memo(function Poster({ movie, width = 112, variant = 'compact' }: { movie: Movie; width?: number; variant?: 'compact' | 'featured' | 'horizontal' }) {
   const navigation = useNavigation<Navigation>();
-  return <Pressable accessible accessibilityRole="button" accessibilityLabel={'View ' + movie.title} accessibilityHint="Opens title details" testID={'movie-card-' + movie.id} onPress={() => navigation.navigate('Details', { id: movie.id })} style={{ width, gap: 8 }}>
-    {movie.poster ? <Image source={{ uri: movie.poster }} style={{ width, height: width * 1.45, borderRadius: 18, backgroundColor: colors.surface }} /> : <View style={{ height: width * 1.45, backgroundColor: colors.surface, borderRadius: 18, justifyContent: 'center', padding: 15 }}><Text style={s.muted}>{movie.title}</Text></View>}
-    <Text numberOfLines={2} style={{ color: colors.text, fontWeight: '700' }}>{movie.title}</Text>
-    <Text style={{ color: colors.muted, fontSize: 12 }}>{movie.release_date} · {movie.type === 'tv' ? 'Series' : movie.type === 'movie' ? 'Movie' : 'Title'}</Text>
+  const overlay = variant !== 'compact';
+  const height = variant === 'horizontal' ? 190 : width * 4 / 3;
+  return <Pressable accessibilityRole="button" accessibilityLabel={'View ' + movie.title} accessibilityHint="Opens title details" testID={'movie-card-' + movie.id} onPress={() => navigation.navigate('Details', { id: movie.id })} style={({ pressed }) => ({ width, gap: 8, opacity: pressed ? 0.8 : 1 })}>
+    <View style={{ height, borderRadius: overlay ? 16 : 12, overflow: 'hidden', backgroundColor: colors.surface }}>
+      <Artwork uri={variant === 'horizontal' ? movie.image || movie.poster : movie.poster} title={movie.title} style={{ width: '100%', height: '100%' }} />
+      {overlay && <LinearGradient colors={['transparent', '#000000bb', '#000000ee']} style={{ position: 'absolute', inset: 0, justifyContent: 'flex-end', padding: 14, gap: 10 }}>
+        <Text numberOfLines={2} style={{ color: colors.text, fontSize: variant === 'horizontal' ? 20 : 16, fontWeight: '700' }}>{movie.title}</Text>
+        <View style={{ alignSelf: 'flex-start', flexDirection: 'row', gap: 6, backgroundColor: '#fffffff0', paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8 }}><Ionicons name="play" size={12} color="#000" /><Text style={{ color: '#000', fontSize: 11, fontWeight: '700' }}>View details</Text></View>
+      </LinearGradient>}
+    </View>
+    {!overlay && <><Text numberOfLines={2} style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>{movie.title}</Text><Text numberOfLines={1} style={{ color: colors.muted, fontSize: 10 }}>{[movie.release_date, movie.narrator || (movie.type === 'tv' ? 'Series' : movie.type === 'movie' ? 'Movie' : 'Title')].filter(Boolean).join(' · ')}</Text></>}
   </Pressable>;
 });
 const Row = React.memo(function Row({ title, movies }: { title: string; movies: Movie[] }) {
+  const { width } = useWindowDimensions();
   if (!movies.length) return null;
-  return <View style={{ gap: 14 }}><Text style={[s.heading, { marginHorizontal: 20 }]}>{title}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 14 }}>{movies.map(movie => <Poster key={movie.id} movie={movie} />)}</ScrollView></View>;
+  const posterWidth = Math.max(96, Math.min(160, (width - 56) / (width >= 600 ? 4 : 3)));
+  return <View style={{ gap: 14 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16 }}><Text style={[s.heading, { flexShrink: 1 }]}>{title}</Text><Ionicons name="chevron-forward" size={18} color={colors.gold} /></View><FlatList horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }} data={movies} keyExtractor={movie => movie.id} renderItem={({ item }) => <Poster movie={item} width={posterWidth} />} initialNumToRender={6} windowSize={5} /></View>;
 });
 function CatalogStatus() {
   const { loading, error, movies, reload } = useStore();
@@ -37,6 +59,7 @@ function CatalogStatus() {
   return null;
 }
 export function HomeScreen() {
+  const paddingBottom = useTabContentPadding();
   const { movies, history, saved, loading, reload, libraryError } = useStore();
   const navigation = useNavigation<Navigation>();
   const { width } = useWindowDimensions();
@@ -51,49 +74,71 @@ export function HomeScreen() {
   const recommended = useMemo(() => [...movies].sort((a, b) => b.genres.filter(g => likedGenres.has(g)).length - a.genres.filter(g => likedGenres.has(g)).length).slice(0, 12), [movies, likedGenres]);
   const latest = useMemo(() => [...movies].sort((a, b) => b.release_date.localeCompare(a.release_date)).slice(0, 12), [movies]);
   const trending = useMemo(() => movies.filter(m => m.trending).slice(0, 12), [movies]);
+  const movieTitles = useMemo(() => movies.filter(m => m.type === 'movie').slice(0, 12), [movies]);
   const series = useMemo(() => movies.filter(m => m.type === 'tv').slice(0, 12), [movies]);
   const continuing = useMemo(() => history.filter(h => h.position > 0 && h.position < h.duration - 10), [history]);
-  return <ScrollView style={s.screen} contentContainerStyle={{ gap: 28, paddingBottom: 32 }} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.brand} />}>
+  const cardWidth = (width - 44) / 2;
+  return <ScrollView style={s.screen} contentContainerStyle={{ gap: 28, paddingTop: 16, paddingBottom }} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.gold} />}>
     <CatalogStatus />
-    <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>{banners.map(movie => <Pressable key={movie.id} accessibilityRole="button" accessibilityLabel={'View ' + movie.title} onPress={() => navigation.navigate('Details', { id: movie.id })} style={{ width, height: Math.min(width * 1.15, 500) }}>
-      {movie.image && <Image source={{ uri: movie.image }} style={{ position: 'absolute', width: '100%', height: '100%' }} />}
-      <LinearGradient colors={['transparent', '#0e0e0e']} style={{ flex: 1, justifyContent: 'flex-end', padding: 24, gap: 12 }}>
-        <Text style={{ color: colors.gold, fontWeight: '800', letterSpacing: 3 }}>FEATURED</Text><Text style={s.title}>{movie.title}</Text><Text style={s.muted}>{movie.genres.join(' · ')}</Text>
-        <View style={[s.button, { alignSelf: 'flex-start', paddingHorizontal: 25 }]}><Text style={s.buttonText}>Explore title</Text></View>
-      </LinearGradient>
-    </Pressable>)}</ScrollView>
-    {libraryError && <Text style={[s.error, { paddingHorizontal: 20 }]}>{libraryError}</Text>}
-    {continuing.length > 0 && <View style={{ gap: 14, paddingHorizontal: 20 }}><Text style={s.heading}>Continue watching</Text>{continuing.slice(0, 5).map(h => {
+    {!!banners.length && <View style={{ paddingHorizontal: 16, gap: 16 }}><View style={{ flexDirection: 'row', gap: 12 }}>{banners.slice(0, 2).map(movie => <Poster key={movie.id} movie={movie} width={cardWidth} variant="featured" />)}</View>{banners[2] && <Poster movie={banners[2]} width={width - 32} variant="horizontal" />}</View>}
+    {libraryError && <Text style={[s.error, { paddingHorizontal: 16 }]}>{libraryError}</Text>}
+    {continuing.length > 0 && <View style={{ gap: 14, paddingHorizontal: 16 }}><Text style={s.heading}>Continue watching</Text>{continuing.slice(0, 5).map(h => {
       const movie = movies.find(m => m.id === h.movie_id);
-      return movie ? <Pressable key={h.movie_id + h.episode_id} style={s.card} onPress={() => navigation.navigate('Player', { id: movie.id, episodeId: h.episode_id || undefined })}><Text style={s.text}>{movie.title}{h.episode_id ? ' · Episode' : ''}</Text><Text style={s.muted}>{Math.floor(h.position / 60)} / {Math.floor(h.duration / 60)} min</Text><View style={{ height: 3, backgroundColor: colors.border }}><View style={{ height: 3, width: `${Math.min(100, h.position / h.duration * 100)}%`, backgroundColor: colors.brand }} /></View></Pressable> : null;
+      return movie ? <Pressable accessibilityRole="button" accessibilityLabel={'Continue ' + movie.title} key={h.movie_id + h.episode_id} style={s.card} onPress={() => navigation.navigate('Player', { id: movie.id, episodeId: h.episode_id || undefined })}><Text style={s.text}>{movie.title}{h.episode_id ? ' · Episode' : ''}</Text><Text style={s.muted}>{Math.floor(h.position / 60)} / {Math.floor(h.duration / 60)} min</Text><View style={{ height: 3, backgroundColor: colors.border }}><View style={{ height: 3, width: `${Math.min(100, h.position / h.duration * 100)}%`, backgroundColor: colors.gold }} /></View></Pressable> : null;
     })}</View>}
-    <Row title="Trending" movies={trending} />
-    <Row title="Latest releases" movies={latest} /><Row title="Recommended for you" movies={recommended} />
-    <Row title="Series" movies={series} />
+    <Row title={trending.length ? 'Trending' : 'From the catalog'} movies={trending.length ? trending : movies.slice(0, 12)} />
+    <Row title="Latest releases" movies={latest} /><Row title="Movies" movies={movieTitles} /><Row title="Series" movies={series} /><Row title="Recommended for you" movies={recommended} />
   </ScrollView>;
 }
-export function CatalogScreen({ type, search = false }: { type?: 'movie' | 'tv'; search?: boolean }) {
+export function NarratorsScreen() {
+  const paddingBottom = useTabContentPadding();
+  const { movies, loading, reload } = useStore();
+  const navigation = useNavigation<Navigation>();
+  const narrators = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const movie of movies) if (movie.narrator.trim()) counts.set(movie.narrator, (counts.get(movie.narrator) || 0) + 1);
+    return [...counts].sort(([a], [b]) => a.localeCompare(b));
+  }, [movies]);
+  return <FlatList style={s.screen} contentContainerStyle={[s.content, { paddingBottom }]} data={narrators} keyExtractor={([name]) => name} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.gold} />}
+    ListHeaderComponent={<View style={{ gap: 16 }}><Text style={s.title}>Abasobanuzi</Text><Text style={s.muted}>Browse movies by narrator</Text><CatalogStatus /></View>}
+    ListEmptyComponent={movies.length > 0 ? <Text style={s.muted}>No narrators are listed for these titles.</Text> : null}
+    renderItem={({ item: [name, count] }) => <Pressable accessibilityRole="button" accessibilityLabel={'Browse ' + name} onPress={() => navigation.navigate('Main', { screen: 'Search', params: { narrator: name } })} style={[s.card, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}><Ionicons name="mic-outline" size={24} color={colors.brand} /><View style={{ flex: 1 }}><Text style={s.heading}>{name}</Text><Text style={s.muted}>{count} {count === 1 ? 'title' : 'titles'}</Text></View><Ionicons name="chevron-forward" size={20} color={colors.gold} /></Pressable>} />;
+}
+function CatalogLinks() {
+  const navigation = useNavigation<Navigation>();
+  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{(['Search', 'Movies', 'Series'] as const).map(screen => <Pressable key={screen} accessibilityRole="button" onPress={() => navigation.navigate('Main', screen === 'Search' ? { screen: 'Search', params: { narrator: undefined } } : { screen })} style={s.chip}><Text style={{ color: colors.gold, fontWeight: '700' }}>{screen === 'Search' ? 'All titles' : screen}</Text></Pressable>)}</View>;
+}
+export function ExploreScreen({ route }: BottomTabScreenProps<TabStack, 'Search'>) {
+  return <CatalogScreen search narrator={route.params?.narrator} />;
+}
+export function CatalogScreen({ type, search = false, narrator }: { type?: 'movie' | 'tv'; search?: boolean; narrator?: string }) {
+  const paddingBottom = useTabContentPadding();
   const { movies, loading, reload } = useStore();
   const [query, setQuery] = useState(''); const [genre, setGenre] = useState('');
   const { width } = useWindowDimensions();
   const columns = width >= 600 ? 4 : 2;
-  const results = useMemo(() => filterCatalog(movies, query, genre, type), [movies, query, genre, type]);
+  const results = useMemo(() => filterCatalog(movies, query, genre, type).filter(movie => !narrator || movie.narrator === narrator), [movies, query, genre, type, narrator]);
   const categories = useMemo(() => [...new Set(movies.filter(m => !type || m.type === type).flatMap(m => m.genres))].sort(), [movies, type]);
   const posterWidth = (width - 32 - 16 * (columns - 1)) / columns;
   const renderPoster = React.useCallback(({ item }: { item: Movie }) => <Poster movie={item} width={posterWidth} />, [posterWidth]);
   return <FlatList key={columns} testID="catalog-list" style={s.screen} numColumns={columns} data={results} keyExtractor={m => m.id}
     initialNumToRender={columns * 4} maxToRenderPerBatch={columns * 4} windowSize={7}
-    contentContainerStyle={{ padding: 16, gap: 18 }} columnWrapperStyle={{ gap: 16 }}
+    contentContainerStyle={{ padding: 16, gap: 18, paddingBottom }} columnWrapperStyle={{ gap: 16 }}
     keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.brand} />}
-    ListHeaderComponent={<View style={{ gap: 18, paddingBottom: 18 }}><Text style={s.title}>{search ? 'Explore' : type === 'tv' ? 'Series' : 'Movies'}</Text>
+    ListHeaderComponent={<View style={{ gap: 18, paddingBottom: 18 }}><Text style={s.title}>{search ? 'Explore' : type === 'tv' ? 'Series' : 'Movies'}</Text><CatalogLinks />{narrator && <View style={s.card}><Text style={s.text}>Narrator: {narrator}</Text><ClearNarrator /></View>}
       <TextInput testID="catalog-search-input" accessibilityLabel="Search movie catalog" placeholder="Titles, narrators, genres…" placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} style={s.input} returnKeyType="search" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>{['', ...categories].map(g => <Pressable key={g} accessibilityRole="button" accessibilityLabel={'Filter category ' + (g || 'All')} accessibilityState={{ selected: genre === g }} style={[s.chip, genre === g && { borderColor: colors.brand }]} onPress={() => setGenre(g)}><Text style={s.text}>{g || 'All'}</Text></Pressable>)}</ScrollView><CatalogStatus />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>{['', ...categories].map(g => <Pressable key={g} accessibilityRole="button" accessibilityLabel={'Filter category ' + (g || 'All')} accessibilityState={{ selected: genre === g }} style={[s.chip, genre === g && { borderColor: colors.gold }]} onPress={() => setGenre(g)}><Text style={s.text}>{g || 'All'}</Text></Pressable>)}</ScrollView><CatalogStatus />
       {movies.length > 0 && <Text testID="catalog-result-count" accessibilityLiveRegion="polite" style={s.muted}>{results.length} {results.length === 1 ? 'title' : 'titles'}</Text>}
     </View>}
     ListEmptyComponent={!loading && movies.length > 0 ? <Text style={s.muted}>No matching titles. Try another search or category.</Text> : null}
     renderItem={renderPoster} />;
 }
+function ClearNarrator() {
+  const navigation = useNavigation<Navigation>();
+  return <Button title="Show all narrators" onPress={() => navigation.navigate('Main', { screen: 'Search', params: { narrator: undefined } })} />;
+}
 export function FavoritesScreen() {
+  const paddingBottom = useTabContentPadding();
   const { movies, saved, session, libraryError, reloadLibrary, loading } = useStore();
   const navigation = useNavigation<Navigation>();
   const [kind, setKind] = useState<'favorite' | 'watchlist'>('favorite');
@@ -104,13 +149,13 @@ export function FavoritesScreen() {
     const savedIds = new Set(saved.filter(entry => entry.kind === kind).map(entry => entry.movie_id));
     return movies.filter(movie => savedIds.has(movie.id));
   }, [movies, saved, kind]);
-  const posterWidth = (width - 40 - 16 * (columns - 1)) / columns;
+  const posterWidth = (width - 32 - 16 * (columns - 1)) / columns;
   const renderPoster = React.useCallback(({ item }: { item: Movie }) => <Poster movie={item} width={posterWidth} />, [posterWidth]);
-  return <FlatList key={columns} testID="collection-list" style={s.screen} contentContainerStyle={s.content}
+  return <FlatList key={columns} testID="collection-list" style={s.screen} contentContainerStyle={[s.content, { paddingBottom }]}
     numColumns={columns} columnWrapperStyle={{ gap: 16 }} data={session ? results : []} keyExtractor={movie => movie.id}
     initialNumToRender={columns * 4} maxToRenderPerBatch={columns * 4} windowSize={7} renderItem={renderPoster}
     ListHeaderComponent={<View style={{ gap: 18 }}><Text style={s.title}>Your collection</Text>
-      <View style={{ flexDirection: 'row', gap: 8 }}>{(['favorite', 'watchlist'] as const).map(k => <Pressable key={k} accessibilityRole="button" accessibilityLabel={k === 'favorite' ? 'Show favorites' : 'Show watchlist'} accessibilityState={{ selected: kind === k }} style={[s.chip, kind === k && { borderColor: colors.brand }]} onPress={() => setKind(k)}><Text style={s.text}>{k === 'favorite' ? 'Favorites' : 'Watchlist'}</Text></Pressable>)}</View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>{(['favorite', 'watchlist'] as const).map(k => <Pressable key={k} accessibilityRole="button" accessibilityLabel={k === 'favorite' ? 'Show favorites' : 'Show watchlist'} accessibilityState={{ selected: kind === k }} style={[s.chip, kind === k && { borderColor: colors.gold }]} onPress={() => setKind(k)}><Text style={s.text}>{k === 'favorite' ? 'Favorites' : 'Watchlist'}</Text></Pressable>)}</View>
       {!session ? <Button title="Sign in to save movies" onPress={() => navigation.navigate('Profile')} /> : <>
         {!!libraryError && <Text style={s.error}>{libraryError}</Text>}<CatalogStatus />
       </>}
@@ -119,6 +164,7 @@ export function FavoritesScreen() {
 }
 export function DetailsScreen({ route, navigation }: NativeStackScreenProps<RootStack, 'Details'>) {
   const { movies, saved, toggleSaved, session } = useStore();
+  const { width } = useWindowDimensions();
   const [movie, setMovie] = useState<Movie | null>(movies.find(m => m.id === route.params.id) ?? null);
   const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [progress, setProgress] = useState(0);
   useEffect(() => { let active = true;
@@ -138,14 +184,15 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
   };
   if (!movie) return <View style={s.content}>{loading ? <ActivityIndicator color={colors.brand} /> : <Text style={s.error}>{error || 'This title is not available.'}</Text>}</View>;
   return <ScrollView style={s.screen} contentContainerStyle={{ paddingBottom: 30 }}>
-    {movie.image && <Image source={{ uri: movie.image }} style={{ width: '100%', height: 270 }} />}
-    <View style={s.content}><Text testID="movie-details-title" style={s.title}>{movie.title}</Text><Text style={s.muted}>{movie.release_date} · {movie.type === 'tv' ? 'Series' : movie.type === 'movie' ? 'Movie' : 'Title'} · {movie.genres.join(', ')}</Text>
-      {!!error && <Text style={s.error}>{error}</Text>}{!!movie.description && <Text style={s.text}>{movie.description}</Text>}
+    <View style={{ height: Math.min(width * 0.75, 380), backgroundColor: colors.surface }}><Artwork uri={movie.image || movie.poster} title={movie.title} style={{ width: '100%', height: '100%' }} /><LinearGradient colors={['transparent', '#00000077', colors.background]} style={{ position: 'absolute', inset: 0 }} /></View>
+    <View style={[s.content, { marginTop: -64 }]}><View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16 }}><Artwork uri={movie.poster} title={movie.title} style={{ width: 96, height: 128, borderRadius: 12 }} /><View style={{ flex: 1, gap: 10 }}><Text testID="movie-details-title" style={s.title}>{movie.title}</Text><Text style={s.muted}>{[movie.release_date, movie.type === 'tv' ? 'Series' : movie.type === 'movie' ? 'Movie' : 'Title'].filter(Boolean).join(' · ')}</Text></View></View>
+      {!!movie.genres.length && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{movie.genres.map((genre, index) => <View key={genre + index} style={[s.chip, { paddingVertical: 6, paddingHorizontal: 10 }]}><Text style={{ color: colors.gold, fontSize: 12 }}>{genre}</Text></View>)}</View>}
+      {loading && <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color={colors.gold} /><Text style={s.muted}>Checking title availability…</Text></View>}{!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}{!!movie.description && <Text style={s.text}>{movie.description}</Text>}
       {!!movie.narrator && <Text style={s.muted}>Narrator: {movie.narrator}</Text>}
-      <Button title="Watch now" disabled={loading || !!error || !canStream(movie)} onPress={() => navigation.navigate('Player', { id: movie.id })} />
-      {!canStream(movie) && <Text style={s.muted}>Streaming is not available for this title.</Text>}
-      <Button title={saved.some(x => x.movie_id === movie.id && x.kind === 'favorite') ? 'Remove favorite' : 'Add to favorites'} disabled={busy} onPress={() => void save('favorite')} />
-      <Button title={saved.some(x => x.movie_id === movie.id && x.kind === 'watchlist') ? 'Remove from watchlist' : 'Add to watchlist'} disabled={busy} onPress={() => void save('watchlist')} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Watch Now" accessibilityState={{ disabled: loading || !!error || !canStream(movie) }} disabled={loading || !!error || !canStream(movie)} onPress={() => navigation.navigate('Player', { id: movie.id })} style={[s.button, { flexDirection: 'row', gap: 8 }, (loading || !!error || !canStream(movie)) && { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}><Ionicons name="play" size={20} color={canStream(movie) && !loading && !error ? colors.text : colors.muted} /><Text style={[s.buttonText, (loading || !!error || !canStream(movie)) && { color: colors.muted }]}>Watch Now</Text></Pressable>
+      {!canStream(movie) && <Text style={s.muted}>Streaming is not available for this title. An authorized video source is required.</Text>}
+      <Button secondary title={saved.some(x => x.movie_id === movie.id && x.kind === 'favorite') ? 'Remove favorite' : 'Add to favorites'} disabled={busy} onPress={() => void save('favorite')} />
+      <Button secondary title={saved.some(x => x.movie_id === movie.id && x.kind === 'watchlist') ? 'Remove from watchlist' : 'Add to watchlist'} disabled={busy} onPress={() => void save('watchlist')} />
       {canDownload(movie) && <Button title={busy ? `Downloading ${Math.round(progress * 100)}%` : 'Download authorized MP4'} disabled={busy || !!error} onPress={() => void download()} />}
       {!!movie.episodes?.length && <><Text style={s.heading}>Episodes</Text>{movie.episodes.map(e => <Button key={e.id} title={`S${e.season} E${e.number} · ${e.title}`} disabled={loading || !!error || !movie.published || !e.streaming_authorized || !e.video_url} onPress={() => navigation.navigate('Player', { id: movie.id, episodeId: e.id })} />)}</>}
     </View><Row title="More like this" movies={movies.filter(m => m.id !== movie.id && m.genres.some(g => movie.genres.includes(g))).slice(0, 12)} />
