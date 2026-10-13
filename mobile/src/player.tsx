@@ -141,72 +141,11 @@ function PlaybackView({ playback }: { playback: Playback }) {
     {status === 'loading' && <ActivityIndicator color={colors.brand} />}
     {!!error && <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Reload video" disabled={replacing} onPress={() => void quality(selectedSource.label, selectedSource.uri)} /></>}
     <Text testID="playback-position" style={s.muted}>{Math.floor(position / 60)}:{String(Math.floor(position % 60)).padStart(2, '0')} / {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2, '0')}</Text>
-    <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Button title="−10 seconds" disabled={status !== 'readyToPlay' || replacing} onPress={() => { player.currentTime = Math.max(0, player.currentTime - 10); }} /></View><View style={{ flex: 1 }}><Bu…6741 tokens truncated…RootStack, 'Profile'>) {
-  const { session, authReady, saved, history, libraryError } = useStore();
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [name, setName] = useState(''); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState('');
-  useEffect(() => { setName(session?.user.user_metadata.display_name ?? ''); }, [session?.user.id]);
-  const action = async (kind: 'login' | 'signup' | 'reset' | 'save' | 'logout') => {
-    setBusy(true); setNotice('');
-    try {
-      const client = requireBackend();
-      if (kind === 'logout') {
-        if (session) await clearDownloads(session.user.id);
-        const { error } = await client.auth.signOut(); if (error) throw error;
-      } else if (kind === 'save' && session) {
-        if (!name.trim() || name.length > 80) throw new Error('Enter a name of 1–80 characters.');
-        const { error } = await client.auth.updateUser({ data: { display_name: name.trim() } }); if (error) throw error;
-        const result = await client.from('profiles').upsert({ id: session.user.id, display_name: name.trim() }); if (result.error) throw result.error;
-        setNotice('Profile saved.');
-      } else {
-        if (!email.includes('@')) throw new Error('Enter a valid email address.');
-        if (kind === 'reset') {
-          const { error } = await client.auth.resetPasswordForEmail(email.trim()); if (error) throw error;
-          setNotice('If an account exists, a password reset email has been sent. Use the configured recovery website.');
-        } else {
-          if (password.length < 8) throw new Error('Use a password with at least eight characters.');
-          const result = kind === 'login' ? await client.auth.signInWithPassword({ email: email.trim(), password }) : await client.auth.signUp({ email: email.trim(), password });
-          if (result.error) throw result.error;
-          setPassword(''); if (kind === 'signup' && !result.data.session) setNotice('Check your email to confirm your account, then sign in.');
-        }
-      }
-    } catch (e) { setNotice(message(e)); } finally { setBusy(false); }
-  };
-  return <ScrollView style={s.screen} keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
-    <Text style={s.title}>Your profile</Text>{!authReady && <ActivityIndicator color={colors.brand} />}
-    {!!notice && <Text accessibilityRole="alert" style={s.text}>{notice}</Text>}{!!libraryError && <Text style={s.error}>{libraryError}</Text>}
-    {session ? <><Text style={s.muted}>{session.user.email}</Text><TextInput style={s.input} accessibilityLabel="Display name" value={name} onChangeText={setName} placeholder="Display name" placeholderTextColor={colors.muted} maxLength={80} />
-      <Button title="Save profile" disabled={busy} onPress={() => void action('save')} /><Text style={s.muted}>{saved.length} saved titles · {history.length} playback records</Text>
-      <Button title="Downloads" onPress={() => navigation.navigate('Downloads')} /><Button title="Settings" onPress={() => navigation.navigate('Settings')} />
-      <Button title="Sign out and remove downloads" disabled={busy} onPress={() => void action('logout')} /></> : <>
-      <Button title="Downloads" onPress={() => navigation.navigate('Downloads')} /><Button title="Settings" onPress={() => navigation.navigate('Settings')} /><Text style={s.muted}>Sign in to sync favorites, watchlists and playback progress.</Text>
-      <TextInput accessibilityLabel="Email address" style={s.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" placeholder="Email" placeholderTextColor={colors.muted} />
-      <TextInput accessibilityLabel="Password" style={s.input} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoComplete="password" placeholder="Password" placeholderTextColor={colors.muted} />
-      <Button title="Sign in" disabled={busy || !authReady} onPress={() => void action('login')} /><Button title="Create account" disabled={busy || !authReady} onPress={() => void action('signup')} /><Button title="Reset password" disabled={busy} onPress={() => void action('reset')} />
-    </>}
-  </ScrollView>;
-}
-export function DownloadsScreen({ navigation }: NativeStackScreenProps<RootStack, 'Downloads'>) {
-  const { session } = useStore(); const jobs = useDownloadJobs(session?.user.id || (fixtureQA ? fixtureOwner : undefined)); const [entries, setEntries] = useState<Download[]>([]); const [error, setError] = useState('');
-  const reload = React.useCallback(() => {
-    if (!session && !fixtureQA) { setEntries([]); return; }
-    setError(''); readDownloads(session?.user.id || fixtureOwner).then(setEntries).catch(e => setError(message(e)));
-  }, [session?.user.id]);
-  useFocusEffect(React.useCallback(() => { reload(); }, [reload]));
-  useEffect(() => { reload(); }, [jobs.filter(job => job.status === 'complete').length, reload]);
-  return <ScrollView style={s.screen} contentContainerStyle={s.content}><Text style={s.title}>Downloads</Text><Text style={s.muted}>Completed authorized MP4 files are available offline for up to seven days, or the earlier owner expiry. Signing out removes them. Paused transfers resume while the app stays open; after restarting, retry the download.</Text>
-    {!!error && <Text style={s.error}>{error}</Text>}{!session && <Button title="Sign in" onPress={() => navigation.navigate('Profile')} />}
-    {jobs.filter(job => job.status !== 'complete').map(job => <View key={job.id} style={s.card}><Text style={s.heading}>{job.title}</Text><DownloadControls job={job} /></View>)}
-    {!entries.length && <Text style={s.muted}>No downloaded movies yet.</Text>}
-    {entries.map(entry => <View key={entry.movie.id} style={s.card}><Text style={s.heading}>{entry.movie.title}</Text><Text style={s.muted}>Expires {new Date(entry.expiresAt).toLocaleDateString()}</Text>
-      <Button title="Play offline" onPress={() => navigation.navigate('Player', { id: entry.movie.id, offline: true })} />
-      <Button title="Remove" onPress={() => { if (session || fixtureQA) void removeDownload(session?.user.id || fixtureOwner, entry.movie.id).then(reload).catch(e => setError(message(e))); }} /></View>)}
-  </ScrollView>;
-}
-export function SettingsScreen() {
-  const [autoplay, setAutoplay] = useState(false); const [loaded, setLoaded] = useState(false); const [notice, setNotice] = useState('');
-  useEffect(() => { AsyncStorage.getItem('filimehome.autoplay').then(v => { setAutoplay(v === 'true'); setLoaded(true); }).catch(e => setNotice(message(e))); }, []);
-  return <ScrollView style={s.screen} contentContainerStyle={s.content}><Text style={s.title}>Settings</Text>
-    <View style={s.card}><Text style={s.heading}>Autoplay when the player opens</Text><Switch accessibilityLabel="Autoplay" disabled={!loaded} value={autoplay} onValueChange={v => { setAutoplay(v); void AsyncStorage.setItem('filimehome.autoplay', String(v)).catch(e => setNotice(message(e))); }} trackColor={{ true: colors.brand }} /></View>
-    <Text style={s.muted}>Video quality and embedded subtitles can be selected in the player when the source provides them. Downloads use device storage and may use mobile data.</Text><Text style={s.muted}>FilimeHome 2.0 · Android</Text>{!!notice && <Text style={s.error}>{notice}</Text>}
+    <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Button title="−10 seconds" disabled={status !== 'readyToPlay' || replacing} onPress={() => { player.currentTime = Math.max(0, player.currentTime - 10); }} /></View><View style={{ flex: 1 }}><Button title="+10 seconds" disabled={status !== 'readyToPlay' || replacing} onPress={() => { player.currentTime = Math.min(Math.max(0, player.duration - 0.1), player.currentTime + 10); }} /></View></View>
+    <Button title="Play / Pause" disabled={status !== 'readyToPlay' || replacing} onPress={() => player.playing ? player.pause() : player.play()} />
+    <Button title="Fullscreen" disabled={status !== 'readyToPlay'} onPress={() => { void videoView.current?.enterFullscreen().catch(e => setError(mediaError(e))); }} />
+    {!session && <Text style={s.muted}>Sign in to save playback progress.</Text>}{!!libraryError && <Text style={s.error}>{libraryError}</Text>}
+    {!playback.offline && !playback.episodeId && !!playback.movie.qualities?.length && <><Text style={s.heading}>Video quality · {selectedSource.label}</Text><Button title="Original / adaptive" disabled={replacing} onPress={() => void quality('Original', playback.uri)} />{playback.movie.qualities.map(q => <Button key={q.label} title={q.label} disabled={replacing} onPress={() => void quality(q.label, q.url)} />)}</>}
+    {subtitles.length > 0 ? <><Text style={s.heading}>Subtitles</Text><Button title="Subtitles off" onPress={() => { player.subtitleTrack = null; }} />{subtitles.map(track => <Button key={track.id} title={track.label || track.language || 'Subtitle'} onPress={() => { player.subtitleTrack = track; }} />)}</> : <Text style={s.muted}>This source has no selectable embedded subtitles. Android supports subtitles provided by the stream; external subtitle files require packaging into HLS.</Text>}
   </ScrollView>;
 }
