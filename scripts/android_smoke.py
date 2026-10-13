@@ -108,7 +108,7 @@ def verify_live_catalog():
             adb('shell', 'input', 'swipe', '360', '1300', '360', '550', '300')
         else:
             raise AssertionError('Missing explicit unavailable-playback state')
-        buttons = [node for node in tree.iter('node') if node.get('content-desc') == 'Watch now']
+        buttons = [node for node in tree.iter('node') if node.get('content-desc') == 'Watch Now']
         assert buttons and all(node.get('enabled') == 'false' for node in buttons), 'Unapproved playback was enabled'
         print('Playback correctly unavailable: no explicit authorized source; playback itself was not tested.', flush=True)
     Path('android-evidence').mkdir(exist_ok=True)
@@ -148,7 +148,7 @@ try:
     wait_text('FilimeHome')
     if not adb('shell', 'pidof', PACKAGE).strip():
         raise AssertionError('Application process is not running')
-    for tab, screen in [('Movies', 'Movies'), ('Series', 'Series'), ('Search', 'Explore'), ('Favorites', 'Your collection')]:
+    for tab, screen in [('Abasobanuzi', 'Abasobanuzi'), ('Explore', 'Explore'), ('Movies', 'Movies'), ('Series', 'Series'), ('All titles', 'Explore'), ('Collection', 'Your collection')]:
         tap(tab)
         wait_text(screen, heading=True)
     tap('Open profile')
@@ -167,7 +167,7 @@ try:
         wait_text('FilimeHome')
         assert adb('shell', 'pidof', PACKAGE).strip(), 'Fresh installation exited'
         if args.catalog_fixture:
-            tap('Search')
+            tap('Explore')
             wait_text('Explore', heading=True)
             wait_catalog_count()
         print('Android 15 fresh installation and cold launch passed.', flush=True)

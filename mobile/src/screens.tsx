@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Pressable, RefreshControl, ScrollView, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Linking, Pressable, RefreshControl, ScrollView, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -79,6 +79,7 @@ export function HomeScreen() {
   const continuing = useMemo(() => history.filter(h => h.position > 0 && h.position < h.duration - 10), [history]);
   const cardWidth = (width - 44) / 2;
   return <ScrollView style={s.screen} contentContainerStyle={{ gap: 28, paddingTop: 16, paddingBottom }} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.gold} />}>
+    <View style={{ paddingHorizontal: 16 }}><WebsiteLinks /></View>
     <CatalogStatus />
     {!!banners.length && <View style={{ paddingHorizontal: 16, gap: 16 }}><View style={{ flexDirection: 'row', gap: 12 }}>{banners.slice(0, 2).map(movie => <Poster key={movie.id} movie={movie} width={cardWidth} variant="featured" />)}</View>{banners[2] && <Poster movie={banners[2]} width={width - 32} variant="horizontal" />}</View>}
     {libraryError && <Text style={[s.error, { paddingHorizontal: 16 }]}>{libraryError}</Text>}
@@ -100,9 +101,16 @@ export function NarratorsScreen() {
     return [...counts].sort(([a], [b]) => a.localeCompare(b));
   }, [movies]);
   return <FlatList style={s.screen} contentContainerStyle={[s.content, { paddingBottom }]} data={narrators} keyExtractor={([name]) => name} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.gold} />}
-    ListHeaderComponent={<View style={{ gap: 16 }}><Text style={s.title}>Abasobanuzi</Text><Text style={s.muted}>Browse movies by narrator</Text><CatalogStatus /></View>}
+    ListHeaderComponent={<View style={{ gap: 16 }}><Text style={s.title}>Abasobanuzi</Text><Text style={s.muted}>Browse movies by narrator</Text><WebsiteLinks /><CatalogStatus /></View>}
     ListEmptyComponent={movies.length > 0 ? <Text style={s.muted}>No narrators are listed for these titles.</Text> : null}
     renderItem={({ item: [name, count] }) => <Pressable accessibilityRole="button" accessibilityLabel={'Browse ' + name} onPress={() => navigation.navigate('Main', { screen: 'Search', params: { narrator: name } })} style={[s.card, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}><Ionicons name="mic-outline" size={24} color={colors.brand} /><View style={{ flex: 1 }}><Text style={s.heading}>{name}</Text><Text style={s.muted}>{count} {count === 1 ? 'title' : 'titles'}</Text></View><Ionicons name="chevron-forward" size={20} color={colors.gold} /></Pressable>} />;
+}
+function WebsiteLinks() {
+  const open = (url: string) => { void Linking.openURL(url).catch(error => Alert.alert('Unable to open link', message(error))); };
+  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+    <Pressable accessibilityRole="link" accessibilityLabel="No Ads" onPress={() => open('https://filimehome.com/subscription')} style={s.chip}><Text style={{ color: colors.gold, fontWeight: '700' }}>No Ads</Text></Pressable>
+    <Pressable accessibilityRole="link" accessibilityLabel="WhatsApp" onPress={() => open("https://wa.me/250795566578?text=I%27m%20from%20FilimeHome")} style={s.chip}><Text style={{ color: colors.brand, fontWeight: '700' }}>WhatsApp</Text></Pressable>
+  </View>;
 }
 function CatalogLinks() {
   const navigation = useNavigation<Navigation>();
@@ -125,7 +133,7 @@ export function CatalogScreen({ type, search = false, narrator }: { type?: 'movi
     initialNumToRender={columns * 4} maxToRenderPerBatch={columns * 4} windowSize={7}
     contentContainerStyle={{ padding: 16, gap: 18, paddingBottom }} columnWrapperStyle={{ gap: 16 }}
     keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.brand} />}
-    ListHeaderComponent={<View style={{ gap: 18, paddingBottom: 18 }}><Text style={s.title}>{search ? 'Explore' : type === 'tv' ? 'Series' : 'Movies'}</Text><CatalogLinks />{narrator && <View style={s.card}><Text style={s.text}>Narrator: {narrator}</Text><ClearNarrator /></View>}
+    ListHeaderComponent={<View style={{ gap: 18, paddingBottom: 18 }}><Text style={s.title}>{search ? 'Explore' : type === 'tv' ? 'Series' : 'Movies'}</Text><CatalogLinks /><WebsiteLinks />{narrator && <View style={s.card}><Text style={s.text}>Narrator: {narrator}</Text><ClearNarrator /></View>}
       <TextInput testID="catalog-search-input" accessibilityLabel="Search movie catalog" placeholder="Titles, narrators, genres…" placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} style={s.input} returnKeyType="search" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>{['', ...categories].map(g => <Pressable key={g} accessibilityRole="button" accessibilityLabel={'Filter category ' + (g || 'All')} accessibilityState={{ selected: genre === g }} style={[s.chip, genre === g && { borderColor: colors.gold }]} onPress={() => setGenre(g)}><Text style={s.text}>{g || 'All'}</Text></Pressable>)}</ScrollView><CatalogStatus />
       {movies.length > 0 && <Text testID="catalog-result-count" accessibilityLiveRegion="polite" style={s.muted}>{results.length} {results.length === 1 ? 'title' : 'titles'}</Text>}
