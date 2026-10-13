@@ -3,7 +3,7 @@ on:
   pull_request:
     paths-ignore: ['docs/**', 'README.md', 'scripts/android_smoke.py', '.github/workflows/verify-preview.yml']
   push:
-    branches: [development/android-filimehome-2]
+    branches: [development/android-filimehome-2, repair/filimehome2-mobile]
     paths-ignore: ['docs/**', 'README.md', 'scripts/android_smoke.py', '.github/workflows/verify-preview.yml']
   workflow_dispatch:
 concurrency:
@@ -21,6 +21,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm audit --json > npm-audit.json || true
       - uses: actions/upload-artifact@v4
@@ -48,6 +49,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -63,7 +68,7 @@ jobs:
       - name: Validate and configure the existing public Supabase project
         run: node scripts/configure_public_backend.mjs
       - name: Test real catalog, categories, search and direct details without database writes
-        run: node scripts/test_live_catalog.mjs
+        run: node --import tsx scripts/test_live_catalog.mjs
       - run: npm run typecheck --prefix mobile
       - run: npx expo install --check
         working-directory: mobile
@@ -108,7 +113,7 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: filimehome-connected-android15-apk
+          name: FilimeHome-2.0-Android-APK
           path: android-testing-apk/
           if-no-files-found: error
       - name: Enable emulator hardware acceleration
