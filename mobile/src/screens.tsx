@@ -9,9 +9,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Movie } from '../../src/types';
 import { canDownload, canStream, filterCatalog } from '../../shared/domain.mjs';
+import { sourceFor } from '../../shared/media.mjs';
 import { catalog, requireBackend } from './backend';
-import { clearDownloads, downloadMovie, readDownloads, removeDownload, type Download } from './downloads';
+import { clearDownloads, startDownload, downloadJobs, subscribeDownloads, pauseDownload, resumeDownload, cancelDownload, readDownloads, removeDownload, type Download, type DownloadJob } from './downloads';
 import type { RootStack, TabStack } from './navigation';
+import { fixtureQA, fixtureOwner } from './fixture-qa';
 import { useStore } from './store';
 import { colors, styles as s } from './theme';
 
@@ -19,6 +21,22 @@ type Navigation = NativeStackNavigationProp<RootStack>;
 function useTabContentPadding() {
   const { bottom } = useSafeAreaInsets();
   return Math.max(112, Math.max(bottom, 12) + 64 + 24);
+}
+function useDownloadJobs(uid?: string) {
+  const [jobs, setJobs] = useState<DownloadJob[]>([]);
+  useEffect(() => {
+    const update = () => setJobs(uid ? downloadJobs(uid) : []);
+    update(); return subscribeDownloads(update);
+  }, [uid]);
+  return jobs;
+}
+function DownloadControls({ job }: { job: DownloadJob }) {
+  const report = (action: Promise<unknown>) => { void action.catch(error => Alert.alert('Download', message(error))); };
+  return <View style={{ gap: 8 }}><Text testID="download-status" accessibilityLiveRegion="polite" style={s.muted}>{job.status === 'complete' ? 'Download complete' : job.status === 'error' ? job.error : job.status === 'canceled' ? 'Download canceled' : `${job.status} · ${Math.round(job.progress * 100)}%`}</Text>
+    {job.status === 'downloading' && <Button title="Pause download" onPress={() => report(pauseDownload(job.uid, job.id))} />}
+    {job.status === 'paused' && <Button title="Resume download" onPress={() => resumeDownload(job.uid, job.id)} />}
+    {!['complete', 'error', 'canceled'].includes(job.status) && <Button secondary title="Cancel download" onPress={() => report(cancelDownload(job.uid, job.id))} />}
+  </View>;
 }
 export const message = (error: unknown) => error instanceof Error ? error.message : 'The request failed. Please try again.';
 export function Button({ title, onPress, disabled = false, secondary = false }: { title: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
@@ -174,7 +192,10 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
   const { movies, saved, toggleSaved, session } = useStore();
   const { width } = useWindowDimensions();
   const [movie, setMovie] = useState<Movie | null>(movies.find(m => m.id === route.params.id) ?? null);
-  const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [progress, setProgress] = useState(0);
+  const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
+  const jobs = useDownloadJobs(session?.user.id || (fixtureQA ? fixtureOwner : undefined));
+  const job = jobs.find(job => job.id === route.params.id);
+  const downloading = !!job && !['error', 'canceled', 'complete'].includes(job.status);
   useEffect(() => { let active = true;
     setLoading(true); setError('');
     catalog.get(route.params.id).then(m => { if (active) setMovie(m); }).catch(e => { if (active) setError(message(e)); }).finally(() => { if (active) setLoading(false); });
@@ -185,10 +206,9 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
     try { await toggleSaved(movie, kind); } catch (e) { Alert.alert('Unable to save', message(e)); } finally { setBusy(false); }
   };
   const download = async () => {
-    if (!session || !movie) { navigation.navigate('Profile'); return; }
-    setBusy(true); setProgress(0);
-    try { await downloadMovie(session.user.id, movie, setProgress); Alert.alert('Download saved', 'Available in Downloads for seven days.'); }
-    catch (e) { Alert.alert('Download failed', message(e)); } finally { setBusy(false); }
+    if ((!session && !fixtureQA) || !movie) { navigation.navigate('Profile'); return; }
+    try { startDownload(session?.user.id || fixtureOwner, movie); }
+    catch (e) { Alert.alert('Download failed', message(e)); }
   };
   if (!movie) return <View style={s.content}>{loading ? <ActivityIndicator color={colors.brand} /> : <Text style={s.error}>{error || 'This title is not available.'}</Text>}</View>;
   return <ScrollView style={s.screen} contentContainerStyle={{ paddingBottom: 30 }}>
@@ -201,8 +221,11 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
       {!canStream(movie) && <Text style={s.muted}>Streaming is not available for this title. An authorized video source is required.</Text>}
       <Button secondary title={saved.some(x => x.movie_id === movie.id && x.kind === 'favorite') ? 'Remove favorite' : 'Add to favorites'} disabled={busy} onPress={() => void save('favorite')} />
       <Button secondary title={saved.some(x => x.movie_id === movie.id && x.kind === 'watchlist') ? 'Remove from watchlist' : 'Add to watchlist'} disabled={busy} onPress={() => void save('watchlist')} />
-      {canDownload(movie) && <Button title={busy ? `Downloading ${Math.round(progress * 100)}%` : 'Download authorized MP4'} disabled={busy || !!error} onPress={() => void download()} />}
-      {!!movie.episodes?.length && <><Text style={s.heading}>Episodes</Text>{movie.episodes.map(e => <Button key={e.id} title={`S${e.season} E${e.number} · ${e.title}`} disabled={loading || !!error || !movie.published || !e.streaming_authorized || !e.video_url} onPress={() => navigation.navigate('Player', { id: movie.id, episodeId: e.id })} />)}</>}
+      {canDownload(movie) && <Button title="Download authorized MP4" disabled={loading || busy || downloading || !!error} onPress={() => void download()} />}
+      {!canDownload(movie) && <Text style={s.muted}>Download unavailable: an authorized direct MP4 download source is required.</Text>}
+      {job && <DownloadControls job={job} />}
+      <Button secondary title="Downloads" onPress={() => navigation.navigate('Downloads')} />
+      {!!movie.episodes?.length && <><Text style={s.heading}>Episodes</Text>{movie.episodes.map(e => <Button key={e.id} title={`S${e.season} E${e.number} · ${e.title}`} disabled={loading || !!error || (() => { try { sourceFor(movie, e.id); return false; } catch { return true; } })()} onPress={() => navigation.navigate('Player', { id: movie.id, episodeId: e.id })} />)}</>}
     </View><Row title="More like this" movies={movies.filter(m => m.id !== movie.id && m.genres.some(g => movie.genres.includes(g))).slice(0, 12)} />
   </ScrollView>;
 }
@@ -243,7 +266,7 @@ export function ProfileScreen({ navigation }: NativeStackScreenProps<RootStack, 
       <Button title="Save profile" disabled={busy} onPress={() => void action('save')} /><Text style={s.muted}>{saved.length} saved titles · {history.length} playback records</Text>
       <Button title="Downloads" onPress={() => navigation.navigate('Downloads')} /><Button title="Settings" onPress={() => navigation.navigate('Settings')} />
       <Button title="Sign out and remove downloads" disabled={busy} onPress={() => void action('logout')} /></> : <>
-      <Text style={s.muted}>Sign in to sync favorites, watchlists and playback progress.</Text>
+      <Button title="Downloads" onPress={() => navigation.navigate('Downloads')} /><Button title="Settings" onPress={() => navigation.navigate('Settings')} /><Text style={s.muted}>Sign in to sync favorites, watchlists and playback progress.</Text>
       <TextInput accessibilityLabel="Email address" style={s.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" placeholder="Email" placeholderTextColor={colors.muted} />
       <TextInput accessibilityLabel="Password" style={s.input} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoComplete="password" placeholder="Password" placeholderTextColor={colors.muted} />
       <Button title="Sign in" disabled={busy || !authReady} onPress={() => void action('login')} /><Button title="Create account" disabled={busy || !authReady} onPress={() => void action('signup')} /><Button title="Reset password" disabled={busy} onPress={() => void action('reset')} />
@@ -251,18 +274,20 @@ export function ProfileScreen({ navigation }: NativeStackScreenProps<RootStack, 
   </ScrollView>;
 }
 export function DownloadsScreen({ navigation }: NativeStackScreenProps<RootStack, 'Downloads'>) {
-  const { session } = useStore(); const [entries, setEntries] = useState<Download[]>([]); const [error, setError] = useState('');
+  const { session } = useStore(); const jobs = useDownloadJobs(session?.user.id || (fixtureQA ? fixtureOwner : undefined)); const [entries, setEntries] = useState<Download[]>([]); const [error, setError] = useState('');
   const reload = React.useCallback(() => {
-    if (!session) { setEntries([]); return; }
-    readDownloads(session.user.id).then(setEntries).catch(e => setError(message(e)));
+    if (!session && !fixtureQA) { setEntries([]); return; }
+    setError(''); readDownloads(session?.user.id || fixtureOwner).then(setEntries).catch(e => setError(message(e)));
   }, [session?.user.id]);
   useFocusEffect(React.useCallback(() => { reload(); }, [reload]));
-  return <ScrollView style={s.screen} contentContainerStyle={s.content}><Text style={s.title}>Downloads</Text><Text style={s.muted}>Authorized MP4 titles remain available for seven days. Signing out removes them.</Text>
+  useEffect(() => { reload(); }, [jobs.filter(job => job.status === 'complete').length, reload]);
+  return <ScrollView style={s.screen} contentContainerStyle={s.content}><Text style={s.title}>Downloads</Text><Text style={s.muted}>Completed authorized MP4 files are available offline for up to seven days, or the earlier owner expiry. Signing out removes them. Paused transfers resume while the app stays open; after restarting, retry the download.</Text>
     {!!error && <Text style={s.error}>{error}</Text>}{!session && <Button title="Sign in" onPress={() => navigation.navigate('Profile')} />}
+    {jobs.filter(job => job.status !== 'complete').map(job => <View key={job.id} style={s.card}><Text style={s.heading}>{job.title}</Text><DownloadControls job={job} /></View>)}
     {!entries.length && <Text style={s.muted}>No downloaded movies yet.</Text>}
     {entries.map(entry => <View key={entry.movie.id} style={s.card}><Text style={s.heading}>{entry.movie.title}</Text><Text style={s.muted}>Expires {new Date(entry.expiresAt).toLocaleDateString()}</Text>
       <Button title="Play offline" onPress={() => navigation.navigate('Player', { id: entry.movie.id, offline: true })} />
-      <Button title="Remove" onPress={() => { if (session) void removeDownload(session.user.id, entry.movie.id).then(reload).catch(e => setError(message(e))); }} /></View>)}
+      <Button title="Remove" onPress={() => { if (session || fixtureQA) void removeDownload(session?.user.id || fixtureOwner, entry.movie.id).then(reload).catch(e => setError(message(e))); }} /></View>)}
   </ScrollView>;
 }
 export function SettingsScreen() {

@@ -1,4 +1,4 @@
-name: Validate FilimeHome and build preview APK
+name: Validate FilimeHome Phase 3 and build APK
 on:
   pull_request:
     paths-ignore: ['docs/**', 'README.md', 'scripts/android_smoke.py', '.github/workflows/verify-preview.yml']
@@ -39,8 +39,9 @@ jobs:
           if grep -R -E 'filimehome-private-(gemini|tmdb)-canary' dist/assets; then exit 1; fi
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
+      EXPO_PUBLIC_MEDIA_CONTRACT: ${{ vars.EXPO_PUBLIC_MEDIA_CONTRACT }}
       EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
@@ -72,6 +73,8 @@ jobs:
       - run: npm run typecheck --prefix mobile
       - run: npx expo install --check
         working-directory: mobile
+      - name: Confirm production build has no fixture opt-in
+        run: test -z "${EXPO_PUBLIC_FIXTURE_QA:-}"
       - run: npm run export:android --prefix mobile
       - run: npx expo prebuild --platform android --non-interactive
         working-directory: mobile
@@ -84,9 +87,9 @@ jobs:
           mkdir -p android-testing-apk android-evidence
           tools="$ANDROID_HOME/build-tools/36.0.0"
           "$tools/zipalign" -P 16 -f 4 mobile/android/app/build/outputs/apk/release/app-release.apk android-evidence/aligned.apk
-          "$tools/apksigner" sign --ks mobile/android/app/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out android-testing-apk/FilimeHome-2.0-connected-android15.apk android-evidence/aligned.apk
+          "$tools/apksigner" sign --ks mobile/android/app/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out android-testing-apk/FilimeHome-2.0-Phase3.apk android-evidence/aligned.apk
           rm android-evidence/aligned.apk
-          python3 scripts/inspect_apk.py android-testing-apk/FilimeHome-2.0-connected-android15.apk --version-code 3 --output android-evidence/corrected
+          python3 scripts/inspect_apk.py android-testing-apk/FilimeHome-2.0-Phase3.apk --version-code 4 --output android-evidence/corrected
           cp android-evidence/corrected/SHA256SUMS android-evidence/corrected/metadata.json android-testing-apk/
       - uses: actions/download-artifact@v4
         continue-on-error: true
@@ -109,11 +112,11 @@ jobs:
               new = json.loads(Path('android-evidence/corrected/metadata.json').read_text())
               assert old['certificate_sha256'] == new['certificate_sha256'], 'Preview certificate changed; same-package update would fail'
               assert new['version_code'] > old['version_code'], 'Preview version code must increase'
-              print('Original preview certificate preserved; version code increased from 2 to 3.')
+              print('Original preview certificate preserved; version code increased from 2 to 4.')
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: FilimeHome-2.0-Android-APK
+          name: FilimeHome-2.0-Phase3-APK
           path: android-testing-apk/
           if-no-files-found: error
       - name: Enable emulator hardware acceleration
@@ -126,11 +129,11 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -skin 720x1600 -memory 3072
-          script: python3 scripts/android_smoke.py android-testing-apk/FilimeHome-2.0-connected-android15.apk --previous-apk previous-apk/FilimeHome-2.0-android15-universal.apk --expected-sdk 35 --expected-version-code 3 --verify-fresh-install --catalog-fixture backend-audit/live-catalog.json
+          script: python3 scripts/android_smoke.py android-testing-apk/FilimeHome-2.0-Phase3.apk --previous-apk previous-apk/FilimeHome-2.0-android15-universal.apk --expected-sdk 35 --expected-version-code 4 --verify-fresh-install --catalog-fixture backend-audit/live-catalog.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android15-installation-evidence
+          name: phase3-android15-production-evidence
           path: |
             android-evidence/
             backend-audit/
@@ -142,3 +145,64 @@ jobs:
             android-activities.log
             android-ui.xml
             filimehome-startup.png
+
+  media-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXPO_PUBLIC_FIXTURE_QA: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: sdkmanager 'build-tools;36.0.0' 'platforms;android-36'
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: python3 scripts/media_fixture_server.py --prepare
+      - name: Select generated local fixture CA
+        run: echo "FILIMEHOME_FIXTURE_CA=$GITHUB_WORKSPACE/media-fixtures/ca.pem" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npm ci --prefix mobile
+      - run: npm run typecheck --prefix mobile
+      - run: npx expo prebuild --platform android --non-interactive
+        working-directory: mobile
+      - name: Compile fixture QA variant of the existing app
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=x86_64
+        working-directory: mobile/android
+      - name: Preserve separate QA APK
+        run: |
+          mkdir fixture-qa-apk
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk fixture-qa-apk/app-release.apk
+      - name: Start local HTTPS original-media server
+        run: python3 -u scripts/media_fixture_server.py > fixture-server.log 2>&1 &
+      - name: Enable emulator hardware acceleration
+        run: sudo chmod a+rw /dev/kvm
+      - name: Native MP4 HLS download and offline tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -skin 720x1600 -memory 3072
+          script: python3 scripts/android_media_qa.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3-native-media-fixture-evidence
+          path: |
+            media-qa-evidence/
+            fixture-server.log
+          if-no-files-found: error

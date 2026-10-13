@@ -18,3 +18,7 @@ credentials.json
 
 __pycache__/
 device-install-evidence/
+
+media-fixtures/
+media-qa-evidence/
+fixture-qa-apk/

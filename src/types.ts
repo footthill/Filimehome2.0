@@ -17,9 +17,14 @@ export interface Movie {
   streaming_authorized?: boolean;
   offline_authorized?: boolean;
   download_url?: string;
+  source_expires_at?: string;
+  offline_expires_at?: string;
+  media_headers?: Record<string, string>;
+  download_size?: number;
+  download_md5?: string;
   subtitles?: { label: string; language: string; url: string }[];
   qualities?: { label: string; url: string }[];
-  episodes?: { id: string; title: string; season: number; number: number; video_url: string; streaming_authorized: boolean }[];
+  episodes?: { id: string; title: string; season: number; number: number; video_url: string; streaming_authorized: boolean; source_expires_at?: string; media_headers?: Record<string, string> }[];
 }
 
 export interface UserData {

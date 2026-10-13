@@ -1,3 +1,4 @@
+import { mediaHeaders, unexpired } from './media.mjs';
 export function secureUrl(value) {
   if (typeof value !== 'string' || value.length > 4096) return '';
   try {
@@ -39,6 +40,11 @@ export function normalizeMovie(row) {
     streaming_authorized: source.streaming_authorized === true,
     offline_authorized: source.offline_authorized === true,
     video_url: secureVideoUrl(source.video_url), download_url: secureUrl(source.download_url),
+    source_expires_at: source.source_expires_at == null ? undefined : text(source.source_expires_at) || 'invalid',
+    offline_expires_at: source.offline_expires_at == null ? undefined : text(source.offline_expires_at) || 'invalid',
+    media_headers: mediaHeaders(source.media_headers),
+    download_size: Number.isSafeInteger(source.download_size) && source.download_size > 0 ? source.download_size : undefined,
+    download_md5: typeof source.download_md5 === 'string' && /^[a-f0-9]{32}$/i.test(source.download_md5) ? source.download_md5.toLowerCase() : undefined,
     subtitles: Array.isArray(source.subtitles) ? source.subtitles.map(s => ({
       label: text(s?.label), language: text(s?.language), url: secureUrl(s?.url),
     })).filter(s => s.url && s.label && s.language) : [],
@@ -49,6 +55,8 @@ export function normalizeMovie(row) {
       id: text(e?.id), title: text(e?.title), season: Number(e?.season) || 1,
       number: Number(e?.number) || 1, video_url: secureVideoUrl(e?.video_url),
       streaming_authorized: e?.streaming_authorized === true,
+      ...(e?.source_expires_at != null ? { source_expires_at: text(e.source_expires_at) || 'invalid' } : {}),
+      ...(e?.media_headers ? { media_headers: mediaHeaders(e.media_headers) } : {}),
     })).filter(e => e.id && e.title) : [],
   };
 }
@@ -60,11 +68,11 @@ export function filterCatalog(movies, query = '', genre = '', type = '') {
 }
 
 export function canStream(movie) {
-  return movie?.published === true && movie.streaming_authorized === true && Boolean(secureVideoUrl(movie.video_url));
+  return movie?.published === true && movie.streaming_authorized === true && Boolean(secureVideoUrl(movie.video_url)) && unexpired(movie.source_expires_at);
 }
 
 export function canDownload(movie) {
-  return canStream(movie) && movie.offline_authorized === true && Boolean(secureUrl(movie.download_url)) &&
+  return movie?.published === true && movie.offline_authorized === true && unexpired(movie.source_expires_at) && unexpired(movie.offline_expires_at) && Boolean(secureUrl(movie.download_url)) &&
     /\.mp4$/i.test(new URL(movie.download_url).pathname);
 }
 

@@ -1,0 +1,67 @@
+{
+  "timestamp_utc": "2026-10-13T20:24:50.699246+00:00",
+  "scope": "GET public HTML/JS and movie metadata only. No media requests, database writes or user rows.",
+  "rights_verification": "URL fields and website behavior do not prove distribution rights.",
+  "website_status": 200,
+  "movies_status": 200,
+  "column_names": [
+    "Downloadurls",
+    "_hash",
+    "backdrop",
+    "backdrop_large",
+    "backdrop_medium",
+    "backdrop_small",
+    "color",
+    "country",
+    "downloadurls",
+    "genres",
+    "hosted",
+    "id",
+    "image",
+    "inserted_at",
+    "link",
+    "modifiedAt",
+    "narrator",
+    "popularity",
+    "poster",
+    "poster_large",
+    "poster_medium",
+    "poster_small",
+    "publishedAt",
+    "release_date",
+    "release_year",
+    "saved",
+    "score",
+    "title",
+    "tmdb_id",
+    "tmdb_overview",
+    "tmdb_rating",
+    "tmdb_title",
+    "tmdb_type",
+    "tmdb_year",
+    "type"
+  ],
+  "required_column_checks": {
+    "published": {
+      "status": 400,
+      "error": {
+        "code": "42703",
+        "message": "column moviesv2.published does not exist"
+      }
+    },
+    "streaming_authorized": {
+      "status": 400,
+      "error": {
+        "code": "42703",
+        "message": "column moviesv2.streaming_authorized does not exist"
+      }
+    },
+    "video_url": {
+      "status": 400,
+      "error": {
+        "code": "42703",
+        "message": "column moviesv2.video_url does not exist"
+      }
+    }
+  }
+}

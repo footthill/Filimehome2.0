@@ -4,4 +4,6 @@ export function replacePlaybackSource<Source>(player: {
   currentTime: number;
   play(): void;
   pause(): void;
-}, source: Source, intent: PlaybackIntent): Promise<void>;
+  status?: string;
+  addListener?(event: 'statusChange', listener: (event: { status: string }) => void): { remove(): void };
+}, source: Source, intent: PlaybackIntent, timeoutMs?: number): Promise<void>;
