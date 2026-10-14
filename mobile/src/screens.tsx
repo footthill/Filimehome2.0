@@ -1,3 +1,4 @@
+import { NativeModules } from 'react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Linking, Pressable, RefreshControl, ScrollView, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -194,7 +195,7 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
   const [movie, setMovie] = useState<Movie | null>(movies.find(m => m.id === route.params.id) ?? null);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
-  const jobs = useDownloadJobs(session?.user.id || (fixtureQA ? fixtureOwner : undefined));
+  const jobs = useDownloadJobs(session?.user.id || (fixtureQA ? fixtureOwner : 'device'));
   const job = jobs.find(job => job.id === route.params.id);
   const downloading = !!job && !['error', 'canceled', 'complete'].includes(job.status);
   useEffect(() => { let active = true;
@@ -207,8 +208,8 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
     try { await toggleSaved(movie, kind); } catch (e) { Alert.alert('Unable to save', message(e)); } finally { setBusy(false); }
   };
   const download = async () => {
-    if ((!session && !fixtureQA) || !movie) { navigation.navigate('Profile'); return; }
-    try { startDownload(session?.user.id || fixtureOwner, movie); }
+    if (!movie) return;
+    try { startDownload(session?.user.id || (fixtureQA ? fixtureOwner : 'device'), movie); }
     catch (e) { Alert.alert('Download failed', message(e)); }
   };
   if (!movie) return <View style={s.content}>{loading ? <ActivityIndicator color={colors.brand} /> : <><Text style={s.error}>{error || 'This title is not available.'}</Text><Button title="Retry movie details" onPress={() => setAttempt(value => value + 1)} /></>}</View>;
@@ -218,12 +219,12 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
       {!!movie.genres.length && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{movie.genres.map((genre, index) => <View key={genre + index} style={[s.chip, { paddingVertical: 6, paddingHorizontal: 10 }]}><Text style={{ color: colors.gold, fontSize: 12 }}>{genre}</Text></View>)}</View>}
       {loading && <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color={colors.gold} /><Text style={s.muted}>Checking title availability…</Text></View>}{!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}{!!movie.description && <Text style={s.text}>{movie.description}</Text>}
       {!!movie.narrator && <Text style={s.muted}>Narrator: {movie.narrator}</Text>}
-      <Pressable accessibilityRole="button" accessibilityLabel="Watch Now" accessibilityState={{ disabled: loading || !!error || !canStream(movie) }} disabled={loading || !!error || !canStream(movie)} onPress={() => navigation.navigate('Player', { id: movie.id })} style={[s.button, { flexDirection: 'row', gap: 8 }, (loading || !!error || !canStream(movie)) && { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}><Ionicons name="play" size={20} color={canStream(movie) && !loading && !error ? colors.text : colors.muted} /><Text style={[s.buttonText, (loading || !!error || !canStream(movie)) && { color: colors.muted }]}>Watch Now</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Watch Now" accessibilityState={{ disabled: loading }} disabled={loading} onPress={() => canStream(movie) && !error ? navigation.navigate('Player', { id: movie.id }) : Alert.alert('Playback unavailable', error || movie.media_availability_error || 'This title has no supported HTTPS MP4 or HLS source. Retry movie details or choose another title.')} style={[s.button, { flexDirection: 'row', gap: 8 }, (loading || !!error || !canStream(movie)) && { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}><Ionicons name="play" size={20} color={canStream(movie) && !loading && !error ? colors.text : colors.muted} /><Text style={[s.buttonText, (loading || !!error || !canStream(movie)) && { color: colors.muted }]}>Watch Now</Text></Pressable>
       {(!!error || !!movie.media_availability_error) && <><Text accessibilityRole="alert" style={s.error}>{movie.media_availability_error}</Text><Button title="Retry movie details" disabled={loading} onPress={() => setAttempt(value => value + 1)} /></>}
       {!canStream(movie) && <Text style={s.muted}>Streaming is not available for this title. An authorized video source is required.</Text>}
       <Button secondary title={saved.some(x => x.movie_id === movie.id && x.kind === 'favorite') ? 'Remove favorite' : 'Add to favorites'} disabled={busy} onPress={() => void save('favorite')} />
       <Button secondary title={saved.some(x => x.movie_id === movie.id && x.kind === 'watchlist') ? 'Remove from watchlist' : 'Add to watchlist'} disabled={busy} onPress={() => void save('watchlist')} />
-      {canDownload(movie) && <Button title="Download authorized MP4" disabled={loading || busy || downloading || !!error} onPress={() => void download()} />}
+      <Button title="Download authorized MP4" disabled={loading || busy || downloading} onPress={() => canDownload(movie) && !error ? void download() : Alert.alert('Download unavailable', error || movie.media_availability_error || 'This title has no direct HTTPS MP4 download source. Retry movie details or choose another title.')} />
       {!canDownload(movie) && <Text style={s.muted}>Download unavailable: an authorized direct MP4 download source is required.</Text>}
       {job && <DownloadControls job={job} />}
       <Button secondary title="Downloads" onPress={() => navigation.navigate('Downloads')} />
@@ -275,11 +276,25 @@ export function ProfileScreen({ navigation }: NativeStackScreenProps<RootStack, 
     </>}
   </ScrollView>;
 }
+function ExportDownload({ entry }: { entry: Download }) {
+  const [busy, setBusy] = useState(false);
+  const [uri, setUri] = useState('');
+  const save = async () => {
+    setBusy(true);
+    try {
+      if (!NativeModules.FilimeHomeExport) throw new Error('File export requires the updated Android APK.');
+      const saved = await NativeModules.FilimeHomeExport.save(entry.uri, entry.movie.title);
+      if (saved) { setUri(saved); Alert.alert('Movie saved', 'The movie is available in the location you selected in My Files.'); }
+    } catch (error) { Alert.alert('Save failed', message(error)); }
+    finally { setBusy(false); }
+  };
+  return <View style={{ gap: 8 }}><Button title={busy ? 'Saving movie…' : 'Save to My Files'} disabled={busy} onPress={() => void save()} />
+    {!!uri && <Button title="Open saved movie" onPress={() => { void NativeModules.FilimeHomeExport.open(uri).catch((error: unknown) => Alert.alert('Open movie', message(error))); }} />}</View>;
+}
 export function DownloadsScreen({ navigation }: NativeStackScreenProps<RootStack, 'Downloads'>) {
-  const { session } = useStore(); const jobs = useDownloadJobs(session?.user.id || (fixtureQA ? fixtureOwner : undefined)); const [entries, setEntries] = useState<Download[]>([]); const [error, setError] = useState('');
+  const { session } = useStore(); const jobs = useDownloadJobs(session?.user.id || (fixtureQA ? fixtureOwner : 'device')); const [entries, setEntries] = useState<Download[]>([]); const [error, setError] = useState('');
   const reload = React.useCallback(() => {
-    if (!session && !fixtureQA) { setEntries([]); return; }
-    setError(''); readDownloads(session?.user.id || fixtureOwner).then(setEntries).catch(e => setError(message(e)));
+    setError(''); readDownloads(session?.user.id || (fixtureQA ? fixtureOwner : 'device')).then(setEntries).catch(e => setError(message(e)));
   }, [session?.user.id]);
   useFocusEffect(React.useCallback(() => { reload(); }, [reload]));
   useEffect(() => { reload(); }, [jobs.filter(job => job.status === 'complete').length, reload]);
@@ -288,8 +303,8 @@ export function DownloadsScreen({ navigation }: NativeStackScreenProps<RootStack
     {jobs.filter(job => job.status !== 'complete').map(job => <View key={job.id} style={s.card}><Text style={s.heading}>{job.title}</Text><DownloadControls job={job} /></View>)}
     {!entries.length && <Text style={s.muted}>No downloaded movies yet.</Text>}
     {entries.map(entry => <View key={entry.movie.id} style={s.card}><Text style={s.heading}>{entry.movie.title}</Text><Text style={s.muted}>Expires {new Date(entry.expiresAt).toLocaleDateString()}</Text>
-      <Button title="Play offline" onPress={() => navigation.navigate('Player', { id: entry.movie.id, offline: true })} />
-      <Button title="Remove" onPress={() => { if (session || fixtureQA) void removeDownload(session?.user.id || fixtureOwner, entry.movie.id).then(reload).catch(e => setError(message(e))); }} /></View>)}
+      <ExportDownload entry={entry} /><Button title="Play offline" onPress={() => navigation.navigate('Player', { id: entry.movie.id, offline: true })} />
+      <Button title="Remove" onPress={() => { void removeDownload(session?.user.id || (fixtureQA ? fixtureOwner : 'device'), entry.movie.id).then(reload).catch(e => setError(message(e))); }} /></View>)}
   </ScrollView>;
 }
 export function SettingsScreen() {

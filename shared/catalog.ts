@@ -1,17 +1,20 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Movie } from '../src/types';
 import { normalizeMovie } from './domain.mjs';
+import { websiteMovie, resolveWebsiteMovie } from './website-media.mjs';
 
 type CatalogOptions = { mode?: 'published' | 'legacy-public'; mediaContract?: 'rights-v1' };
 
 // Read-only audit of filimehome.com verified this project's legacy public schema.
-// This compatibility mode never grants streaming rights or changes database access.
+// Owner-authorized website compatibility; explicit publication/media denials remain effective.
 export function catalogOptionsFor(url: string | undefined): CatalogOptions {
   return { mode: url?.replace(/\/$/, '') === 'https://byelcaamxxvfltnegxby.supabase.co' ? 'legacy-public' : 'published' };
 }
 
 export function createCatalog(client: SupabaseClient | null, options: CatalogOptions = {}) {
   const legacy = options.mode === 'legacy-public';
+  const website = legacy && options.mediaContract !== 'rights-v1';
+  const normalize = (row: Record<string, unknown>) => website ? websiteMovie(row) : normalizeMovie(row);
   const visible = (row: Record<string, unknown>) => !legacy || !Object.prototype.hasOwnProperty.call(row, 'published') || row.published === true;
   const requireClient = () => {
     if (!client) throw new Error('Supabase is not configured. Set the public URL and publishable key.');
@@ -53,7 +56,7 @@ export function createCatalog(client: SupabaseClient | null, options: CatalogOpt
         if (!legacy) query = query.eq('published', true);
         const { data, error } = await query.order('id').range(from, from + 199);
         if (error) throw new Error(`Movie catalog unavailable: ${error.message}`);
-        rows.push(...(data ?? []).filter(visible).map(normalizeMovie));
+        rows.push(...(data ?? []).filter(visible).map(normalize));
         if (!data || data.length < 200) return attachRights(rows);
       }
     },
@@ -62,7 +65,7 @@ export function createCatalog(client: SupabaseClient | null, options: CatalogOpt
       if (!legacy) query = query.eq('published', true);
       const { data, error } = await query.maybeSingle();
       if (error) throw new Error(`Movie details unavailable: ${error.message}`);
-      return data && visible(data) ? (await attachRights([normalizeMovie(data)], id))[0] : null;
+      return data && visible(data) ? (await attachRights([website ? await resolveWebsiteMovie(data) : normalizeMovie(data)], id))[0] : null;
     },
   };
 }

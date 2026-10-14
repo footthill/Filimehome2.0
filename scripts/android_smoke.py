@@ -109,7 +109,10 @@ def verify_live_catalog():
         else:
             raise AssertionError('Missing explicit unavailable-playback state')
         buttons = [node for node in tree.iter('node') if node.get('content-desc') == 'Watch Now']
-        assert buttons and all(node.get('enabled') == 'false' for node in buttons), 'Unapproved playback was enabled'
+        assert buttons and all(node.get('enabled') == 'true' for node in buttons), 'Unavailable source must show a useful message on tap'
+        tap('Watch Now')
+        wait_text('Playback unavailable')
+        adb('shell', 'input', 'keyevent', '4')
         print('Playback correctly unavailable: no explicit authorized source; playback itself was not tested.', flush=True)
     Path('android-evidence').mkdir(exist_ok=True)
     Path('android-evidence/live-details.xml').write_text(adb('shell', 'cat', '/sdcard/filimehome-ui.xml'))

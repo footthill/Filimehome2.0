@@ -114,8 +114,8 @@ try:
         adb('shell','input','keyevent','4')
         wait('Ready to play');record(title+' native playback pause seek fullscreen')
     for title in ['Denied','Expired']:
-        restart();open_title(title);scroll_to('Watch Now');assert wait('Watch Now').get('enabled')=='false'
-        assert find('Download authorized MP4') is None
+        restart();open_title(title);scroll_to('Watch Now');tap('Watch Now');wait('Playback unavailable');adb('shell','input','keyevent','4')
+        scroll_to('Download authorized MP4');tap('Download authorized MP4');wait('Download unavailable');adb('shell','input','keyevent','4')
         record(title+' rights/source gate')
     restart();open_title('Retry');scroll_to('Watch Now');tap('Watch Now');wait('Playback failed')
     context=ssl.create_default_context(cafile='media-fixtures/ca.pem')

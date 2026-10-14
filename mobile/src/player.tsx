@@ -27,8 +27,7 @@ export function PlayerScreen({ route }: NativeStackScreenProps<RootStack, 'Playe
     setPlayback(null); setError('');
     const load = async () => {
       if (route.params.offline) {
-        if (!session && !fixtureQA) throw new Error('Sign in to play your downloads.');
-        const entry = (await readDownloads(session?.user.id || fixtureOwner)).find(e => e.movie.id === route.params.id);
+        const entry = (await readDownloads(session?.user.id || (fixtureQA ? fixtureOwner : 'device'))).find(e => e.movie.id === route.params.id);
         if (!entry) throw new Error('The download is missing or has expired.');
         return { movie: entry.movie, uri: entry.uri, episodeId: '', offline: true };
       }
