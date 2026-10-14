@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": "2026-10-13T20:24:50.699246+00:00",
+  "timestamp_utc": "2026-10-14T05:39:41.277363+00:00",
   "scope": "GET public HTML/JS and movie metadata only. No media requests, database writes or user rows.",
   "rights_verification": "URL fields and website behavior do not prove distribution rights.",
   "website_status": 200,
@@ -62,6 +62,62 @@
         "code": "42703",
         "message": "column moviesv2.video_url does not exist"
       }
+    },
+    "offline_authorized": {
+      "status": 400,
+      "error": {
+        "code": "42703",
+        "message": "column moviesv2.offline_authorized does not exist"
+      }
+    },
+    "download_url": {
+      "status": 400,
+      "error": {
+        "code": "42703",
+        "message": "column moviesv2.download_url does not exist"
+      }
+    },
+    "source_expires_at": {
+      "status": 400,
+      "error": {
+        "code": "42703",
+        "message": "column moviesv2.source_expires_at does not exist"
+      }
+    },
+    "offline_expires_at": {
+      "status": 400,
+      "error": {
+        "code": "42703",
+        "message": "column moviesv2.offline_expires_at does not exist"
+      }
+    },
+    "media_headers": {
+      "status": 400,
+      "error": {
+        "code": "42703",
+        "message": "column moviesv2.media_headers does not exist"
+      }
+    },
+    "download_size": {
+      "status": 400,
+      "error": {
+        "code": "42703",
+        "message": "column moviesv2.download_size does not exist"
+      }
+    },
+    "download_md5": {
+      "status": 400,
+      "error": {
+        "code": "42703",
+        "message": "column moviesv2.download_md5 does not exist"
+      }
+    }
+  },
+  "sidecar_check": {
+    "status": 404,
+    "error": {
+      "code": "42P01",
+      "message": "relation \"public.movie_media_rights\" does not exist"
     }
   }
 }

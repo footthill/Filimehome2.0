@@ -1,3 +1,16 @@
+# Current Phase 3 APK — version 5
+
+The latest tested preview is **FilimeHome-2.0-Phase3.apk** (version code 5), built
+by [successful workflow 38528839914](https://github.com/footthill/Filimehome2.0/actions/runs/38528839914).
+Download [FilimeHome-2.0-Phase3-APK](https://github.com/footthill/Filimehome2.0/actions/runs/38528839914/artifacts/11877820667),
+extract the ZIP, and install the `.apk` inside. Its SHA-256 is
+`370880b6ddc417c30bcade34e8d1899d2870755e3d08b8edb2312b77d7240307`.
+It preserves `com.footthill.filimehome` and the existing preview certificate.
+Android 15 emulator installation/update/navigation, real catalog, and 15 native
+generated-media fixture tests passed. Physical Samsung A05 testing and live owner
+media authorization remain pending. See [Phase 3 evidence and owner actions](PHASE3.md).
+The version-3 links below are historical; use the version-5 artifact above.
+
 # Android 15 installation and diagnosis
 
 The user confirmed that version 2 installed and launched successfully on the
