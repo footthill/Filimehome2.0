@@ -33,6 +33,9 @@ public class DumpInstrumentation extends Instrumentation {
       info.flags |= android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
       getUiAutomation().setServiceInfo(info);
       AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+      for (int attempt=0; root == null && attempt<30; attempt++) {
+        Thread.sleep(100); root = getUiAutomation().getRootInActiveWindow();
+      }
       if (root == null) throw new IllegalStateException("No active accessibility window");
       StringWriter writer = new StringWriter(); XmlSerializer xml = Xml.newSerializer();
       xml.setOutput(writer); xml.startDocument("UTF-8", true); xml.startTag(null,"hierarchy");

@@ -18,9 +18,12 @@ def adb(*args):
     return result.stdout
 
 def ui():
-    output = adb('shell', 'am', 'instrument', '-w', 'com.filimehome.qa/.DumpInstrumentation')
-    match = re.search(r'INSTRUMENTATION_RESULT: tree=(<\?xml.*?</hierarchy>)', output, re.S)
-    if not match: raise AssertionError('Fresh UI snapshot failed: ' + output)
+    for _ in range(3):
+        output = adb('shell', 'am', 'instrument', '-w', 'com.filimehome.qa/.DumpInstrumentation')
+        match = re.search(r'INSTRUMENTATION_RESULT: tree=(<\?xml.*?</hierarchy>)', output, re.S)
+        if match: break
+        time.sleep(0.2)
+    else: raise AssertionError('Fresh UI snapshot failed: ' + output)
     xml = match.group(1)
     (OUT/'last-ui.xml').write_text(xml)
     return ET.fromstring(xml)
