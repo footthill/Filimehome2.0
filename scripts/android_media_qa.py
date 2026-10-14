@@ -109,6 +109,8 @@ try:
         tap('−10 seconds');tap('Fullscreen');time.sleep(2)
         # Android's first-use immersive tutorial consumes Back until acknowledged.
         if find('Got it') is not None: tap('Got it')
+        # Wait for the tutorial window to detach; otherwise it consumes Back's up event.
+        wait('Hide player controls');time.sleep(1)
         adb('shell','input','keyevent','4')
         wait('Ready to play');record(title+' native playback pause seek fullscreen')
     for title in ['Denied','Expired']:
