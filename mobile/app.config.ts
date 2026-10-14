@@ -21,7 +21,7 @@ const config: ExpoConfig = {
   name: 'FilimeHome 2.0', slug: 'filimehome-2', version: '2.0.0',
   orientation: 'default', userInterfaceStyle: 'dark',
   // The repository has no app icon asset. Do not invent existing branding.
-  android: { package: 'com.footthill.filimehome', versionCode: 4 },
+  android: { package: 'com.footthill.filimehome', versionCode: 5 },
   plugins: [
     ['expo-video', { supportsBackgroundPlayback: false, supportsPictureInPicture: true }],
     'expo-screen-orientation',

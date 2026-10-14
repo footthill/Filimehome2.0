@@ -89,7 +89,7 @@ jobs:
           "$tools/zipalign" -P 16 -f 4 mobile/android/app/build/outputs/apk/release/app-release.apk android-evidence/aligned.apk
           "$tools/apksigner" sign --ks mobile/android/app/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out android-testing-apk/FilimeHome-2.0-Phase3.apk android-evidence/aligned.apk
           rm android-evidence/aligned.apk
-          python3 scripts/inspect_apk.py android-testing-apk/FilimeHome-2.0-Phase3.apk --version-code 4 --output android-evidence/corrected
+          python3 scripts/inspect_apk.py android-testing-apk/FilimeHome-2.0-Phase3.apk --version-code 5 --output android-evidence/corrected
           cp android-evidence/corrected/SHA256SUMS android-evidence/corrected/metadata.json android-testing-apk/
       - uses: actions/download-artifact@v4
         continue-on-error: true
@@ -112,7 +112,7 @@ jobs:
               new = json.loads(Path('android-evidence/corrected/metadata.json').read_text())
               assert old['certificate_sha256'] == new['certificate_sha256'], 'Preview certificate changed; same-package update would fail'
               assert new['version_code'] > old['version_code'], 'Preview version code must increase'
-              print('Original preview certificate preserved; version code increased from 2 to 4.')
+              print('Original preview certificate preserved; version code increased from 2 to 5.')
           PY
       - uses: actions/upload-artifact@v4
         with:
@@ -129,7 +129,7 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -skin 720x1600 -memory 3072
-          script: python3 scripts/android_smoke.py android-testing-apk/FilimeHome-2.0-Phase3.apk --previous-apk previous-apk/FilimeHome-2.0-android15-universal.apk --expected-sdk 35 --expected-version-code 4 --verify-fresh-install --catalog-fixture backend-audit/live-catalog.json
+          script: python3 scripts/android_smoke.py android-testing-apk/FilimeHome-2.0-Phase3.apk --previous-apk previous-apk/FilimeHome-2.0-android15-universal.apk --expected-sdk 35 --expected-version-code 5 --verify-fresh-install --catalog-fixture backend-audit/live-catalog.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

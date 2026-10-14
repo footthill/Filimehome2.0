@@ -192,6 +192,7 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
   const { movies, saved, toggleSaved, session } = useStore();
   const { width } = useWindowDimensions();
   const [movie, setMovie] = useState<Movie | null>(movies.find(m => m.id === route.params.id) ?? null);
+  const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
   const jobs = useDownloadJobs(session?.user.id || (fixtureQA ? fixtureOwner : undefined));
   const job = jobs.find(job => job.id === route.params.id);
@@ -200,7 +201,7 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
     setLoading(true); setError('');
     catalog.get(route.params.id).then(m => { if (active) setMovie(m); }).catch(e => { if (active) setError(message(e)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [route.params.id]);
+  }, [route.params.id, attempt]);
   const save = async (kind: 'favorite' | 'watchlist') => {
     if (!movie) return; setBusy(true);
     try { await toggleSaved(movie, kind); } catch (e) { Alert.alert('Unable to save', message(e)); } finally { setBusy(false); }
@@ -210,7 +211,7 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
     try { startDownload(session?.user.id || fixtureOwner, movie); }
     catch (e) { Alert.alert('Download failed', message(e)); }
   };
-  if (!movie) return <View style={s.content}>{loading ? <ActivityIndicator color={colors.brand} /> : <Text style={s.error}>{error || 'This title is not available.'}</Text>}</View>;
+  if (!movie) return <View style={s.content}>{loading ? <ActivityIndicator color={colors.brand} /> : <><Text style={s.error}>{error || 'This title is not available.'}</Text><Button title="Retry movie details" onPress={() => setAttempt(value => value + 1)} /></>}</View>;
   return <ScrollView style={s.screen} contentContainerStyle={{ paddingBottom: 30 }}>
     <View style={{ height: Math.min(width * 0.75, 380), backgroundColor: colors.surface }}><Artwork uri={movie.image || movie.poster} title={movie.title} style={{ width: '100%', height: '100%' }} /><LinearGradient colors={['transparent', '#00000077', colors.background]} style={{ position: 'absolute', inset: 0 }} /></View>
     <View style={[s.content, { marginTop: -64 }]}><View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16 }}><Artwork uri={movie.poster} title={movie.title} style={{ width: 96, height: 128, borderRadius: 12 }} /><View style={{ flex: 1, gap: 10 }}><Text testID="movie-details-title" style={s.title}>{movie.title}</Text><Text style={s.muted}>{[movie.release_date, movie.type === 'tv' ? 'Series' : movie.type === 'movie' ? 'Movie' : 'Title'].filter(Boolean).join(' · ')}</Text></View></View>
@@ -218,7 +219,7 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
       {loading && <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color={colors.gold} /><Text style={s.muted}>Checking title availability…</Text></View>}{!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}{!!movie.description && <Text style={s.text}>{movie.description}</Text>}
       {!!movie.narrator && <Text style={s.muted}>Narrator: {movie.narrator}</Text>}
       <Pressable accessibilityRole="button" accessibilityLabel="Watch Now" accessibilityState={{ disabled: loading || !!error || !canStream(movie) }} disabled={loading || !!error || !canStream(movie)} onPress={() => navigation.navigate('Player', { id: movie.id })} style={[s.button, { flexDirection: 'row', gap: 8 }, (loading || !!error || !canStream(movie)) && { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}><Ionicons name="play" size={20} color={canStream(movie) && !loading && !error ? colors.text : colors.muted} /><Text style={[s.buttonText, (loading || !!error || !canStream(movie)) && { color: colors.muted }]}>Watch Now</Text></Pressable>
-      {!!movie.media_availability_error && <Text accessibilityRole="alert" style={s.error}>{movie.media_availability_error}</Text>}
+      {(!!error || !!movie.media_availability_error) && <><Text accessibilityRole="alert" style={s.error}>{movie.media_availability_error}</Text><Button title="Retry movie details" disabled={loading} onPress={() => setAttempt(value => value + 1)} /></>}
       {!canStream(movie) && <Text style={s.muted}>Streaming is not available for this title. An authorized video source is required.</Text>}
       <Button secondary title={saved.some(x => x.movie_id === movie.id && x.kind === 'favorite') ? 'Remove favorite' : 'Add to favorites'} disabled={busy} onPress={() => void save('favorite')} />
       <Button secondary title={saved.some(x => x.movie_id === movie.id && x.kind === 'watchlist') ? 'Remove from watchlist' : 'Add to watchlist'} disabled={busy} onPress={() => void save('watchlist')} />
