@@ -32,7 +32,18 @@ export function createCatalog(client: SupabaseClient | null, options: CatalogOpt
   const merge = (movie: Movie, rights: Map<string, Record<string, unknown>>) => {
     const approved = rights.get(movie.id);
     // Only explicit owner-provisioned rights rows may add media to legacy metadata.
-    return approved ? normalizeMovie({ ...movie, ...approved, id: movie.id }) : movie;
+    if (options.mediaContract !== 'rights-v1') return movie;
+    // Sidecar mode is authoritative: never fall back to old inline grants.
+    return normalizeMovie({ ...movie, streaming_authorized: false, offline_authorized: false,
+      video_url: '', download_url: '', qualities: [], episodes: [], ...approved, id: movie.id });
+  };
+  const attachRights = async (movies: Movie[], id?: string) => {
+    try { const rights = await mediaRights(id); return movies.map(movie => merge(movie, rights)); }
+    catch {
+      // A media service failure must not hide otherwise accessible movie metadata.
+      return movies.map(movie => ({ ...merge(movie, new Map()),
+        media_availability_error: 'Media permissions could not be verified. Refresh this title and try again.' }));
+    }
   };
   return {
     async list(): Promise<Movie[]> {
@@ -43,7 +54,7 @@ export function createCatalog(client: SupabaseClient | null, options: CatalogOpt
         const { data, error } = await query.order('id').range(from, from + 199);
         if (error) throw new Error(`Movie catalog unavailable: ${error.message}`);
         rows.push(...(data ?? []).filter(visible).map(normalizeMovie));
-        if (!data || data.length < 200) { const rights = await mediaRights(); return rows.map(movie => merge(movie, rights)); }
+        if (!data || data.length < 200) return attachRights(rows);
       }
     },
     async get(id: string): Promise<Movie | null> {
@@ -51,7 +62,7 @@ export function createCatalog(client: SupabaseClient | null, options: CatalogOpt
       if (!legacy) query = query.eq('published', true);
       const { data, error } = await query.maybeSingle();
       if (error) throw new Error(`Movie details unavailable: ${error.message}`);
-      return data && visible(data) ? merge(normalizeMovie(data), await mediaRights(id)) : null;
+      return data && visible(data) ? (await attachRights([normalizeMovie(data)], id))[0] : null;
     },
   };
 }

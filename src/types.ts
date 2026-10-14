@@ -19,6 +19,7 @@ export interface Movie {
   download_url?: string;
   source_expires_at?: string;
   offline_expires_at?: string;
+  media_availability_error?: string;
   media_headers?: Record<string, string>;
   download_size?: number;
   download_md5?: string;

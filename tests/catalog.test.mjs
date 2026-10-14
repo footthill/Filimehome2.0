@@ -54,3 +54,32 @@ test('explicit legacy catalog mode reads real metadata but grants no playback ri
   assert.equal(client.calls.some(c => c[0] === 'published'), false);
   assert.equal(catalogOptionsFor('https://otherproject.supabase.co').mode, 'published');
 });
+
+function rightsBackend(failure = null, rights = []) {
+  const metadata = backend([{ id: 'approved', title: 'Real metadata', published: true,
+    streaming_authorized: true, offline_authorized: true,
+    video_url: 'https://old.invalid/movie.mp4', download_url: 'https://old.invalid/movie.mp4' }]);
+  return { from(table) {
+    if (table === 'moviesv2') return metadata.from(table);
+    assert.equal(table, 'movie_media_rights');
+    const q = { select() { return q; }, eq() { return q; }, order() { return q; },
+      range() { return Promise.resolve({ data: failure ? null : rights, error: failure }); } };
+    return q;
+  } };
+}
+test('media contract outages preserve real browsing and fail closed for stale grants', async () => {
+  const service = createCatalog(rightsBackend({ message: 'missing rights table' }), { mediaContract: 'rights-v1' });
+  for (const movie of [(await service.list())[0], await service.get('approved')]) {
+    assert.equal(movie.title, 'Real metadata');
+    assert.equal(canStream(movie), false); assert.equal(canDownload(movie), false);
+    assert.match(movie.media_availability_error, /could not be verified/);
+  }
+});
+test('sidecar grants are authoritative and absent rows never reuse inline permissions', async () => {
+  const blocked = await createCatalog(rightsBackend(), { mediaContract: 'rights-v1' }).get('approved');
+  assert.equal(canStream(blocked), false); assert.equal(canDownload(blocked), false);
+  const approved = await createCatalog(rightsBackend(null, [{ movie_id: 'approved', published: true,
+    streaming_authorized: true, video_url: 'https://approved.invalid/movie.m3u8' }]), { mediaContract: 'rights-v1' }).get('approved');
+  assert.equal(canStream(approved), true); assert.equal(canDownload(approved), false);
+  assert.equal(approved.video_url, 'https://approved.invalid/movie.m3u8');
+});
