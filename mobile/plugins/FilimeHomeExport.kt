@@ -44,7 +44,7 @@ class FilimeHomeExport(private val context: ReactApplicationContext) : ReactCont
   }
   @ReactMethod fun save(uri: String, title: String, promise: Promise) {
     if (pending != null) { promise.reject("EXPORT_BUSY", "A save is already in progress"); return }
-    val activity = currentActivity
+    val activity = context.currentActivity
     if (activity == null) { promise.reject("NO_ACTIVITY", "Open FilimeHome to save this movie"); return }
     try {
       val file = File(Uri.parse(uri).path ?: "").canonicalFile
