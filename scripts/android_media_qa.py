@@ -106,7 +106,10 @@ try:
         deadline=time.monotonic()+10
         while position()<before+7 and time.monotonic()<deadline:time.sleep(0.5)
         assert position()>=before+7,'Seek failed'
-        tap('−10 seconds');tap('Fullscreen');time.sleep(2);adb('shell','input','keyevent','4')
+        tap('−10 seconds');tap('Fullscreen');time.sleep(2)
+        # Android's first-use immersive tutorial consumes Back until acknowledged.
+        if find('Got it') is not None: tap('Got it')
+        adb('shell','input','keyevent','4')
         wait('Ready to play');record(title+' native playback pause seek fullscreen')
     for title in ['Denied','Expired']:
         restart();open_title(title);scroll_to('Watch Now');assert wait('Watch Now').get('enabled')=='false'
