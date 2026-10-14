@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.filimehome.qa">
+  <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="35" />
+  <application android:label="FilimeHome CI UI snapshot" android:debuggable="true" android:testOnly="true" />
+  <instrumentation android:name=".DumpInstrumentation" android:targetPackage="com.filimehome.qa" />
+</manifest>

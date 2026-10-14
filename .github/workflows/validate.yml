@@ -181,6 +181,8 @@ jobs:
       - name: Compile fixture QA variant of the existing app
         run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=x86_64
         working-directory: mobile/android
+      - name: Build emulator-only live UI snapshot helper
+        run: python3 scripts/build_ui_snapshot.py
       - name: Preserve separate QA APK
         run: |
           mkdir fixture-qa-apk

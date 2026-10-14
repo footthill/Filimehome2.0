@@ -18,8 +18,10 @@ def adb(*args):
     return result.stdout
 
 def ui():
-    adb('shell','uiautomator','dump','/sdcard/media-qa.xml')
-    xml = adb('shell','cat','/sdcard/media-qa.xml')
+    output = adb('shell', 'am', 'instrument', '-w', 'com.filimehome.qa/.DumpInstrumentation')
+    match = re.search(r'INSTRUMENTATION_RESULT: tree=(<\?xml.*?</hierarchy>)', output, re.S)
+    if not match: raise AssertionError('Fresh UI snapshot failed: ' + output)
+    xml = match.group(1)
     (OUT/'last-ui.xml').write_text(xml)
     return ET.fromstring(xml)
 
@@ -90,6 +92,7 @@ def record(name):
 try:
     assert adb('shell','getprop','ro.build.version.sdk').strip()=='35'
     assert adb('shell','getprop','ro.kernel.qemu').strip()=='1','Fixture QA is emulator-only'
+    adb('install', '-r', '-t', 'ui-snapshot-build/snapshot.apk')
     adb('reverse','tcp:8443','tcp:8443')
     adb('install','-r','--no-streaming','fixture-qa-apk/app-release.apk')
     for title in ['MP4','HLS','Redirect','Headers']:
@@ -127,5 +130,7 @@ try:
     adb('reverse','--remove','tcp:8443');tap('Play offline');wait('Ready to play');tap('Play / Pause');advancing();record('Completed download native offline playback without network')
     adb('shell','input','keyevent','4');tap('Remove');wait('No downloaded movies yet.');record('Remove completed download')
 finally:
+    with (OUT/'last-screen.png').open('wb') as screenshot:
+        subprocess.run(['adb', 'exec-out', 'screencap', '-p'], stdout=screenshot, check=False)
     (OUT/'logcat.txt').write_text(adb('logcat','-d'))
     (OUT/'results.json').write_text(json.dumps(results,indent=2))
