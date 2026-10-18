@@ -13,7 +13,28 @@ permissions:
   contents: read
   actions: read
 jobs:
+  evidence:
+    if: contains(github.event.head_commit.message, '[evidence only]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: phase3-android15-production-evidence
+          run-id: '39150975526'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: evidence
+      - name: Read previous production screen without another device attempt
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          for path in Path('evidence').rglob('last-ui.xml'):
+              print('SCREEN:', path)
+              root = ET.parse(path).getroot()
+              print([(n.get('text'),n.get('content-desc'),n.get('resource-id'),n.get('bounds')) for n in root.iter('node') if n.get('text') or n.get('content-desc')])
+          PY
   verify:
+    if: ${{ !contains(github.event.head_commit.message, '[evidence only]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
