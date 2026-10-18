@@ -34,7 +34,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       const data = await catalog.list();
       setMovies(data);
-      await AsyncStorage.setItem(catalogCache, JSON.stringify(data));
+      // Cache quota/write failures must not replace a successfully loaded catalog
+      // with an older (or empty) snapshot in the network-error fallback below.
+      try { await AsyncStorage.setItem(catalogCache, JSON.stringify(data)); }
+      catch { /* Current network metadata remains usable without a disk cache. */ }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to load movies');
       // Cached metadata lets authorized downloaded titles remain discoverable offline.

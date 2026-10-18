@@ -5,7 +5,7 @@ import { VideoView, useVideoPlayer, type VideoSource, type SubtitleTrack } from 
 import * as ScreenOrientation from 'expo-screen-orientation';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { Movie } from '../../src/types';
-import { canStream, resumePosition, videoContentType } from '../../shared/domain.mjs';
+import { resumePosition, videoContentType } from '../../shared/domain.mjs';
 import { replacePlaybackSource, type PlaybackIntent } from '../../shared/playback.mjs';
 import { catalog } from './backend';
 import { sourceFor, mediaError } from '../../shared/media.mjs';
@@ -17,6 +17,10 @@ import { Button, message } from './screens';
 import { colors, styles as s } from './theme';
 
 type Playback = { movie: Movie; uri: string; episodeId: string; offline: boolean; headers?: Record<string, string> };
+// Safe native acceptance evidence: never log media URLs, headers or signed queries.
+function playbackLog(movieId: string, event: string, details: Record<string, string | number | boolean> = {}) {
+  console.info('FILIMEHOME_PLAYER', JSON.stringify({ movieId, event, ...details }));
+}
 export function PlayerScreen({ route }: NativeStackScreenProps<RootStack, 'Player'>) {
   const { session } = useStore();
   const [playback, setPlayback] = useState<Playback | null>(null);
@@ -54,6 +58,7 @@ function PlaybackView({ playback }: { playback: Playback }) {
   const resume = useRef(history.find(h => h.movie_id === playback.movie.id && h.episode_id === playback.episodeId));
   const latestProgress = useRef({ position: resume.current?.position ?? 0, duration: resume.current?.duration ?? 0 });
   const videoView = useRef<VideoView>(null);
+  const frameRendered = useRef(false); const progressLogged = useRef(false);
   const initialized = useRef(false); const lastSync = useRef(0); const autoplay = useRef(false);
   const save = useRef(saveProgress); save.current = saveProgress;
   const source = (uri: string, headers = playback.headers): VideoSource => ({ uri, headers, contentType: playback.offline ? 'progressive' : videoContentType(uri) || 'auto', metadata: { title: playback.movie.title } });
@@ -64,6 +69,22 @@ function PlaybackView({ playback }: { playback: Playback }) {
   };
   useEffect(() => {
     let active = true;
+    const loadTimeout = setTimeout(() => {
+      if (player.status === 'readyToPlay' || player.status === 'error') return;
+      player.pause(); setStatus('error');
+      setError('Video loading timed out. Check your connection and use Reload video.');
+      playbackLog(playback.movie.id, 'loadingTimeout');
+    }, 30000);
+    const ready = () => {
+      clearTimeout(loadTimeout);
+      setError(''); setDuration(player.duration);
+      setSubtitles(player.availableSubtitleTracks);
+      if (!initialized.current) {
+        player.currentTime = resumePosition(latestProgress.current.position, player.duration);
+        initialized.current = true;
+        if (autoplay.current) player.play();
+      }
+    };
     AsyncStorage.getItem('filimehome.autoplay').then(value => {
       if (!active) return;
       autoplay.current = value === 'true';
@@ -71,20 +92,36 @@ function PlaybackView({ playback }: { playback: Playback }) {
     }).catch(() => { /* Safe default: no autoplay. */ });
     const statusSubscription = player.addListener('statusChange', event => {
       setStatus(event.status);
-      if (event.status === 'error') setError(mediaError(event.error?.message));
-      if (event.status === 'readyToPlay') {
-        setError(''); setDuration(player.duration);
-        setSubtitles(player.availableSubtitleTracks);
-        if (!initialized.current) {
-          player.currentTime = resumePosition(latestProgress.current.position, player.duration);
-          initialized.current = true;
-          if (autoplay.current) player.play();
-        }
+      playbackLog(playback.movie.id, 'status', { status: event.status });
+      if (event.status === 'error') {
+        clearTimeout(loadTimeout); setError(mediaError(event.error?.message));
       }
+      if (event.status === 'readyToPlay') ready();
+    });
+    const sourceSubscription = player.addListener('sourceLoad', event => {
+      setDuration(event.duration); setSubtitles(event.availableSubtitleTracks);
+      playbackLog(playback.movie.id, 'sourceLoaded', {
+        duration: event.duration, audioTracks: event.availableAudioTracks.length,
+        videoTracks: event.availableVideoTracks.length,
+      });
+    });
+    const playingSubscription = player.addListener('playingChange', event => {
+      playbackLog(playback.movie.id, 'playing', {
+        playing: event.isPlaying, muted: player.muted, volume: player.volume,
+        audioSelected: player.audioTrack !== null, videoSelected: player.videoTrack !== null,
+      });
     });
     const timeSubscription = player.addListener('timeUpdate', event => {
       latestProgress.current = { position: event.currentTime, duration: player.duration };
       setPosition(event.currentTime); setDuration(player.duration);
+      if (!progressLogged.current && player.playing && frameRendered.current && event.currentTime >= 2) {
+        progressLogged.current = true;
+        playbackLog(playback.movie.id, 'renderedPlaybackProgress', {
+          position: event.currentTime, duration: player.duration,
+          audioSelected: player.audioTrack !== null, videoSelected: player.videoTrack !== null,
+          muted: player.muted, volume: player.volume,
+        });
+      }
       if (Date.now() - lastSync.current > 10000) { lastSync.current = Date.now(); flush(); }
     });
     const appState = AppState.addEventListener('change', state => {
@@ -93,16 +130,16 @@ function PlaybackView({ playback }: { playback: Playback }) {
         player.pause(); flush();
       }
     });
-    // A local file may already be ready before statusChange subscribes.
-    if (player.status === 'readyToPlay') {
-      player.currentTime = resumePosition(latestProgress.current.position, player.duration);
-      initialized.current = true; setStatus('readyToPlay'); setDuration(player.duration); setSubtitles(player.availableSubtitleTracks);
-    }
-    return () => { active = false; flush(); statusSubscription.remove(); timeSubscription.remove(); appState.remove(); };
+    // Local files and fast failures can settle before statusChange subscribes.
+    setStatus(player.status);
+    if (player.status === 'readyToPlay') ready();
+    if (player.status === 'error') { clearTimeout(loadTimeout); setError(mediaError('')); }
+    return () => { active = false; clearTimeout(loadTimeout); flush(); statusSubscription.remove(); sourceSubscription.remove(); playingSubscription.remove(); timeSubscription.remove(); appState.remove(); };
   }, [player]);
   const quality = async (label: string, uri: string) => {
     if (replacementActive.current) return;
     replacementActive.current = true; replacementRequested.current = true;
+    frameRendered.current = false; progressLogged.current = false;
     setReplacing(true); setError(''); setStatus('loading');
     const intent = retryIntent.current || {
       position: initialized.current ? player.currentTime : resumePosition(latestProgress.current.position, player.duration),
@@ -134,7 +171,8 @@ function PlaybackView({ playback }: { playback: Playback }) {
   return <ScrollView style={s.screen} contentContainerStyle={s.content}>
     <Text style={s.heading}>{playback.movie.title}</Text>
     <Text testID="playback-status" accessibilityLiveRegion="polite" style={s.muted}>{status === 'loading' ? 'Loading / buffering…' : status === 'readyToPlay' ? 'Ready to play' : status === 'error' ? 'Playback failed' : 'Preparing video…'}</Text>
-    <VideoView ref={videoView} player={player} style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' }} nativeControls allowsFullscreen allowsPictureInPicture
+    <VideoView testID="movie-video-view" ref={videoView} player={player} style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' }} nativeControls allowsFullscreen allowsPictureInPicture
+      onFirstFrameRender={() => { frameRendered.current = true; playbackLog(playback.movie.id, 'firstVideoFrame', { offline: playback.offline }); }}
       onFullscreenEnter={() => { void ScreenOrientation.unlockAsync().catch(() => {}); }}
       onFullscreenExit={() => { void ScreenOrientation.unlockAsync().catch(() => {}); }} />
     {status === 'loading' && <ActivityIndicator color={colors.brand} />}

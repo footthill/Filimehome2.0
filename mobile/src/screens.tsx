@@ -122,7 +122,7 @@ export function NarratorsScreen() {
   return <FlatList style={s.screen} contentContainerStyle={[s.content, { paddingBottom }]} data={narrators} keyExtractor={([name]) => name} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.gold} />}
     ListHeaderComponent={<View style={{ gap: 16 }}><Text style={s.title}>Abasobanuzi</Text><Text style={s.muted}>Browse movies by narrator</Text><WebsiteLinks /><CatalogStatus /></View>}
     ListEmptyComponent={movies.length > 0 ? <Text style={s.muted}>No narrators are listed for these titles.</Text> : null}
-    renderItem={({ item: [name, count] }) => <Pressable accessibilityRole="button" accessibilityLabel={'Browse ' + name} onPress={() => navigation.navigate('Main', { screen: 'Search', params: { narrator: name } })} style={[s.card, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}><Ionicons name="mic-outline" size={24} color={colors.brand} /><View style={{ flex: 1 }}><Text style={s.heading}>{name}</Text><Text style={s.muted}>{count} {count === 1 ? 'title' : 'titles'}</Text></View><Ionicons name="chevron-forward" size={20} color={colors.gold} /></Pressable>} />;
+    renderItem={({ item: [name, count] }) => <Pressable accessibilityRole="button" accessibilityLabel={'Browse ' + name} testID={'narrator-' + name} onPress={() => navigation.navigate('Main', { screen: 'Search', params: { narrator: name } })} style={[s.card, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}><Ionicons name="mic-outline" size={24} color={colors.brand} /><View style={{ flex: 1 }}><Text style={s.heading}>{name}</Text><Text style={s.muted}>{count} {count === 1 ? 'title' : 'titles'}</Text></View><Ionicons name="chevron-forward" size={20} color={colors.gold} /></Pressable>} />;
 }
 function WebsiteLinks() {
   const open = (url: string) => { void Linking.openURL(url).catch(error => Alert.alert('Unable to open link', message(error))); };
@@ -131,9 +131,12 @@ function WebsiteLinks() {
     <Pressable accessibilityRole="link" accessibilityLabel="WhatsApp" onPress={() => open("https://wa.me/250795566578?text=I%27m%20from%20FilimeHome")} style={s.chip}><Text style={{ color: colors.brand, fontWeight: '700' }}>WhatsApp</Text></Pressable>
   </View>;
 }
-function CatalogLinks() {
+function CatalogLinks({ onAllTitles }: { onAllTitles: () => void }) {
   const navigation = useNavigation<Navigation>();
-  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{(['Search', 'Movies', 'Series'] as const).map(screen => <Pressable key={screen} accessibilityRole="button" onPress={() => navigation.navigate('Main', screen === 'Search' ? { screen: 'Search', params: { narrator: undefined } } : { screen })} style={s.chip}><Text style={{ color: colors.gold, fontWeight: '700' }}>{screen === 'Search' ? 'All titles' : screen}</Text></Pressable>)}</View>;
+  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{(['Search', 'Movies', 'Series'] as const).map(screen => <Pressable key={screen} accessibilityRole="button" accessibilityLabel={screen === 'Search' ? 'All titles' : screen} onPress={() => {
+    if (screen === 'Search') onAllTitles();
+    navigation.navigate('Main', screen === 'Search' ? { screen: 'Search', params: { narrator: undefined } } : { screen });
+  }} style={s.chip}><Text style={{ color: colors.gold, fontWeight: '700' }}>{screen === 'Search' ? 'All titles' : screen}</Text></Pressable>)}</View>;
 }
 export function ExploreScreen({ route }: BottomTabScreenProps<TabStack, 'Search'>) {
   return <CatalogScreen search narrator={route.params?.narrator} />;
@@ -142,6 +145,9 @@ export function CatalogScreen({ type, search = false, narrator }: { type?: 'movi
   const paddingBottom = useTabContentPadding();
   const { movies, loading, reload } = useStore();
   const [query, setQuery] = useState(''); const [genre, setGenre] = useState('');
+  // A narrator selection is a fresh browse action, not another constraint on an old search.
+  useEffect(() => { setQuery(''); setGenre(''); }, [narrator]);
+  const clearFilters = React.useCallback(() => { setQuery(''); setGenre(''); }, []);
   const { width } = useWindowDimensions();
   const columns = width >= 600 ? 4 : 2;
   const results = useMemo(() => filterCatalog(movies, query, genre, type).filter(movie => !narrator || movie.narrator === narrator), [movies, query, genre, type, narrator]);
@@ -152,12 +158,11 @@ export function CatalogScreen({ type, search = false, narrator }: { type?: 'movi
     initialNumToRender={columns * 4} maxToRenderPerBatch={columns * 4} windowSize={7}
     contentContainerStyle={{ padding: 16, gap: 18, paddingBottom }} columnWrapperStyle={{ gap: 16 }}
     keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.brand} />}
-    ListHeaderComponent={<View style={{ gap: 18, paddingBottom: 18 }}><Text style={s.title}>{search ? 'Explore' : type === 'tv' ? 'Series' : 'Movies'}</Text><CatalogLinks /><WebsiteLinks />{narrator && <View style={s.card}><Text style={s.text}>Narrator: {narrator}</Text><ClearNarrator /></View>}
+    ListHeaderComponent={<View style={{ gap: 18, paddingBottom: 18 }}><View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 12 }}><Text style={s.title}>{search ? 'Explore' : type === 'tv' ? 'Series' : 'Movies'}</Text>{movies.length > 0 && <Text testID="catalog-result-count" accessibilityLiveRegion="polite" style={s.muted}>{results.length} {results.length === 1 ? 'title' : 'titles'}</Text>}</View><CatalogLinks onAllTitles={clearFilters} /><WebsiteLinks />{narrator && <View style={s.card}><Text style={s.text}>Narrator: {narrator}</Text><ClearNarrator /></View>}
       <TextInput testID="catalog-search-input" accessibilityLabel="Search movie catalog" placeholder="Titles, narrators, genres…" placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} style={s.input} returnKeyType="search" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>{['', ...categories].map(g => <Pressable key={g} accessibilityRole="button" accessibilityLabel={'Filter category ' + (g || 'All')} accessibilityState={{ selected: genre === g }} style={[s.chip, genre === g && { borderColor: colors.gold }]} onPress={() => setGenre(g)}><Text style={s.text}>{g || 'All'}</Text></Pressable>)}</ScrollView><CatalogStatus />
-      {movies.length > 0 && <Text testID="catalog-result-count" accessibilityLiveRegion="polite" style={s.muted}>{results.length} {results.length === 1 ? 'title' : 'titles'}</Text>}
     </View>}
-    ListEmptyComponent={!loading && movies.length > 0 ? <Text style={s.muted}>No matching titles. Try another search or category.</Text> : null}
+    ListEmptyComponent={!loading && movies.length > 0 ? <View style={{ gap: 12 }}><Text style={s.muted}>No matching titles. Try another search or category.</Text>{(!!query || !!genre) && <Button secondary title="Clear search and category" onPress={clearFilters} />}</View> : null}
     renderItem={renderPoster} />;
 }
 function ClearNarrator() {
@@ -228,7 +233,13 @@ export function DetailsScreen({ route, navigation }: NativeStackScreenProps<Root
       {!canDownload(movie) && <Text style={s.muted}>Download unavailable: an authorized direct MP4 download source is required.</Text>}
       {job && <DownloadControls job={job} />}
       <Button secondary title="Downloads" onPress={() => navigation.navigate('Downloads')} />
-      {!!movie.episodes?.length && <><Text style={s.heading}>Episodes</Text>{movie.episodes.map(e => <Button key={e.id} title={`S${e.season} E${e.number} · ${e.title}`} disabled={loading || !!error || (() => { try { sourceFor(movie, e.id); return false; } catch { return true; } })()} onPress={() => navigation.navigate('Player', { id: movie.id, episodeId: e.id })} />)}</>}
+      {!!movie.episodes?.length && <><Text style={s.heading}>Episodes</Text>{movie.episodes.map(e => <Button key={e.id} title={`S${e.season} E${e.number} · ${e.title}`} disabled={loading} onPress={() => {
+        try {
+          if (error) throw new Error(error);
+          sourceFor(movie, e.id);
+          navigation.navigate('Player', { id: movie.id, episodeId: e.id });
+        } catch (failure) { Alert.alert('Episode unavailable', message(failure)); }
+      }} />)}</>}
     </View><Row title="More like this" movies={movies.filter(m => m.id !== movie.id && m.genres.some(g => movie.genres.includes(g))).slice(0, 12)} />
   </ScrollView>;
 }
