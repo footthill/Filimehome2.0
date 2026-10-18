@@ -1,23 +1,29 @@
-name: Verify compiled preview APK
+name: Verify compiled Android 15 APK with real authorized media
 on:
   push:
-    branches: [development/android-filimehome-2]
-    paths: ['scripts/android_smoke.py', '.github/workflows/verify-preview.yml']
+    branches: [repair/filimehome2-mobile]
+    paths: ['.github/workflows/verify-preview.yml']
   workflow_dispatch:
     inputs:
       artifact_run:
-        description: Completed APK build workflow run ID
+        description: Completed universal APK compilation run ID
         required: true
-        default: '38068221949'
+        default: '39150975526'
 permissions:
   contents: read
   actions: read
 jobs:
-  smoke:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
+    env:
+      QEMU_AUDIO_DRV: pa
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -26,27 +32,74 @@ jobs:
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - name: Enable emulator hardware acceleration
-        run: sudo chmod a+rw /dev/kvm
+      - run: sdkmanager 'build-tools;36.0.0' 'platforms;android-36'
+      - name: Prepare emulator audio output capture
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=filimehome rate=48000 channels=2
+          pactl set-default-sink filimehome
+          pactl set-default-source filimehome.monitor
       - uses: actions/download-artifact@v4
         with:
-          name: filimehome-preview-apk
-          run-id: ${{ github.event.inputs.artifact_run || '38068221949' }}
+          name: FilimeHome-2.0-Android15-APK
+          run-id: ${{ github.event.inputs.artifact_run || '39150975526' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: preview-apk
-      - uses: reactivecircus/android-emulator-runner@v2
+      - name: Inspect the exact previously built binary
+        run: |
+          python3 scripts/inspect_apk.py preview-apk/FilimeHome-2.0-Android15.apk --version-code 7 --output android-evidence/reverified
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          published = json.loads(Path('preview-apk/metadata.json').read_text())
+          actual = json.loads(Path('android-evidence/reverified/metadata.json').read_text())
+          assert published['sha256'] == actual['sha256'], 'Artifact bytes changed'
+          assert actual['certificate_sha256'] == 'fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c'
+          PY
+      - uses: actions/download-artifact@v4
         with:
-          api-level: 30
+          name: phase3-native-media-fixture-evidence
+          run-id: '39150975526'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior-fixture-evidence
+      - name: Record exact cause of the previous fixture assertion
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          path = next(Path('prior-fixture-evidence').rglob('last-ui.xml'))
+          root = ET.parse(path).getroot()
+          print('Previous active window text:', [n.get('text') for n in root.iter('node') if n.get('text')])
+          PY
+      - run: npm ci
+      - run: node scripts/configure_public_backend.mjs
+      - run: node --import tsx scripts/test_live_catalog.mjs
+      - name: Build emulator-only UI snapshot helper
+        run: python3 scripts/build_ui_snapshot.py
+      - name: Enable emulator hardware acceleration
+        run: sudo chmod a+rw /dev/kvm
+      - name: Verify real navigation video audio download offline playback and export
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
           arch: x86_64
-          target: default
+          target: google_apis
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -skin 480x800 -memory 2048
-          script: python3 scripts/android_smoke.py preview-apk/app-release.apk
+          emulator-options: -no-window -gpu swiftshader_indirect -audio pa -no-boot-anim -no-snapshot -camera-back none -skin 720x1600 -memory 3072
+          script: python3 scripts/android_smoke.py preview-apk/FilimeHome-2.0-Android15.apk --expected-sdk 35 --expected-version-code 7 --verify-fresh-install --catalog-fixture backend-audit/live-catalog.json && python3 scripts/android_live_media.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-ui-smoke-evidence
+          name: verified-android15-functional-evidence
           path: |
+            android-evidence/
+            backend-audit/
+            live-media-evidence/
+            !live-media-evidence/*.wav
+            android-install.log
+            android-device.json
             android-startup.log
             android-activities.log
             android-ui.xml
