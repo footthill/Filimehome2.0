@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
 import { createCatalog, catalogOptionsFor } from '../shared/catalog.ts';
-import { canStream, filterCatalog } from '../shared/domain.mjs';
+import { canStream, canDownload, filterCatalog } from '../shared/domain.mjs';
 import { validatePublicConfig } from '../shared/public-config.mjs';
 
 const config = validatePublicConfig(process.env.EXPO_PUBLIC_SUPABASE_URL, process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY);
@@ -40,3 +40,19 @@ const report = { project_url: config.url, catalog_mode: catalogOptionsFor(config
 await mkdir('backend-audit', { recursive: true });
 await writeFile('backend-audit/live-catalog.json', JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify(report, null, 2));
+
+// Owner-supplied URL is a verification target only. Never inject it into a movie.
+const ownerProbe = 'https://pub-e93ca026964e48dab84e209dd9964abd.r2.dev/movies/self/468f6c24-e597-4d95-8d0c-ef9d08313457/runner-2026-delivery-men-perfect.mp4';
+const approved = movies.find(item => item.video_url === ownerProbe || item.download_url === ownerProbe)
+  || movies.find(item => item.title.toLocaleLowerCase() === 'runner' && canStream(item) && canDownload(item));
+assert.ok(approved, 'No real catalog record matches the owner-approved verification media. Do not inject a source.');
+const current = await catalog.get(approved.id);
+assert.ok(current && canStream(current) && canDownload(current), 'Owner-approved movie lacks usable current playback/download sources.');
+assert.ok(current.poster || current.image, 'Real verification title has no poster/artwork.');
+const media = { id: current.id, title: current.title, query: current.title,
+  owner_probe_url: ownerProbe, playback_url: current.video_url, download_url: current.download_url,
+  owner_url_matches_backend: current.video_url === ownerProbe || current.download_url === ownerProbe,
+  poster_available: Boolean(current.poster || current.image),
+  narrator: movies.find(item => /^[A-Za-z][A-Za-z0-9 ]{2,35}$/.test(item.narrator))?.narrator || '' };
+await writeFile('backend-audit/approved-media.json', JSON.stringify(media, null, 2) + '\n');
+console.log('Approved real catalog media:', JSON.stringify({ id: media.id, title: media.title, owner_url_matches_backend: media.owner_url_matches_backend }));

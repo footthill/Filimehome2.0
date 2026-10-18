@@ -30,30 +30,52 @@ def ui():
 
 def nodes(): return list(ui().iter('node'))
 
-def find(label):
-    for n in nodes():
-        if n.get('text') == label or n.get('content-desc') == label or n.get('content-desc','').startswith(label+', tab'):
+def bounds(node):
+    value = list(map(int, re.findall(r'-?\d+', node.get('bounds', ''))))
+    return value if len(value) == 4 else None
+
+def visible_match(tree, label):
+    # Accessibility snapshots can retain children outside the current viewport.
+    # Use the active window bounds so an off-screen label is never tapped.
+    window = next((bounds(n) for n in tree.iter('node') if bounds(n)), None)
+    if window is None: return None
+    for n in tree.iter('node'):
+        description = n.get('content-desc', '')
+        if not (n.get('text') == label or description == label or re.fullmatch(re.escape(label) + r', tab(?:, .*)?', description)):
+            continue
+        rect = bounds(n)
+        if rect and rect[2] > rect[0] and rect[3] > rect[1] and window[0] <= (rect[0] + rect[2]) / 2 < window[2] and window[1] <= (rect[1] + rect[3]) / 2 < window[3]:
             return n
     return None
 
-def wait(label,timeout=90):
+def find(label): return visible_match(ui(), label)
+
+def wait(label,timeout=90,enabled=False):
     deadline=time.monotonic()+timeout
+    disabled = False
     while time.monotonic()<deadline:
         n=find(label)
-        if n is not None: return n
+        if n is not None:
+            disabled = n.get('enabled') == 'false'
+            if not enabled or not disabled: return n
         time.sleep(1)
-    raise AssertionError('Missing control/state: '+label)
+    raise AssertionError(('Disabled control: ' if disabled and enabled else 'Missing control/state: ')+label)
 
 def tap(label):
-    n=wait(label)
+    n=wait(label,enabled=True)
     assert n.get('enabled')!='false','Disabled control: '+label
-    bounds=list(map(int,re.findall(r'\d+',n.get('bounds',''))))
-    adb('shell','input','tap',str((bounds[0]+bounds[2])//2),str((bounds[1]+bounds[3])//2))
+    rect=bounds(n)
+    assert rect is not None,'Invalid control bounds: '+label
+    adb('shell','input','tap',str((rect[0]+rect[2])//2),str((rect[1]+rect[3])//2))
 
 def scroll_to(label):
-    for _ in range(8):
-        if find(label) is not None: return
-        adb('shell','input','swipe','360','1300','360','500','350')
+    # A preceding action can leave the details page below the requested control.
+    # Search both directions, with a fixed limit rather than endless retries.
+    for start,end in [(1300,500),(500,1300)]:
+        for _ in range(8):
+            if find(label) is not None: return
+            adb('shell','input','swipe','360',str(start),'360',str(end),'350')
+    if find(label) is not None: return
     raise AssertionError('Missing scrolled control: '+label)
 
 def open_title(title):

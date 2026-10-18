@@ -1,4 +1,4 @@
-name: Validate FilimeHome Phase 3 and build APK
+name: Validate FilimeHome Android functionality and build APK
 on:
   pull_request:
     paths-ignore: ['docs/**', 'README.md', 'scripts/android_smoke.py', '.github/workflows/verify-preview.yml']
@@ -41,6 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
+      QEMU_AUDIO_DRV: pa
       EXPO_PUBLIC_MEDIA_CONTRACT: ${{ vars.EXPO_PUBLIC_MEDIA_CONTRACT }}
       EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
@@ -64,12 +65,22 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install explicit Android build tools
         run: sdkmanager 'build-tools;36.0.0' 'platforms;android-36'
+      - name: Prepare real media inspection and emulator audio capture
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=filimehome rate=48000 channels=2
+          pactl set-default-sink filimehome
+          pactl set-default-source filimehome.monitor
       - run: npm ci
       - run: npm ci --prefix mobile
       - name: Validate and configure the existing public Supabase project
         run: node scripts/configure_public_backend.mjs
       - name: Test real catalog, categories, search and direct details without database writes
         run: node --import tsx scripts/test_live_catalog.mjs
+      - name: Verify website link rules and owner-approved MP4 video and audio tracks
+        run: python3 scripts/functional_preflight.py
       - run: npm run typecheck --prefix mobile
       - run: npx expo install --check
         working-directory: mobile
@@ -87,9 +98,9 @@ jobs:
           mkdir -p android-testing-apk android-evidence
           tools="$ANDROID_HOME/build-tools/36.0.0"
           "$tools/zipalign" -P 16 -f 4 mobile/android/app/build/outputs/apk/release/app-release.apk android-evidence/aligned.apk
-          "$tools/apksigner" sign --ks mobile/android/app/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out android-testing-apk/FilimeHome-2.0-Phase3.apk android-evidence/aligned.apk
+          "$tools/apksigner" sign --ks mobile/android/app/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out android-testing-apk/FilimeHome-2.0-Android15.apk android-evidence/aligned.apk
           rm android-evidence/aligned.apk
-          python3 scripts/inspect_apk.py android-testing-apk/FilimeHome-2.0-Phase3.apk --version-code 6 --output android-evidence/corrected
+          python3 scripts/inspect_apk.py android-testing-apk/FilimeHome-2.0-Android15.apk --version-code 7 --output android-evidence/corrected
           cp android-evidence/corrected/SHA256SUMS android-evidence/corrected/metadata.json android-testing-apk/
       - uses: actions/download-artifact@v4
         continue-on-error: true
@@ -112,11 +123,11 @@ jobs:
               new = json.loads(Path('android-evidence/corrected/metadata.json').read_text())
               assert old['certificate_sha256'] == new['certificate_sha256'], 'Preview certificate changed; same-package update would fail'
               assert new['version_code'] > old['version_code'], 'Preview version code must increase'
-              print('Original preview certificate preserved; version code increased from 2 to 6.')
+              print('Original preview certificate preserved; version code increased from 2 to 7.')
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: FilimeHome-2.0-Phase3-APK
+          name: FilimeHome-2.0-Android15-APK
           path: android-testing-apk/
           if-no-files-found: error
       - name: Enable emulator hardware acceleration
@@ -130,8 +141,8 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -skin 720x1600 -memory 3072
-          script: python3 scripts/android_smoke.py android-testing-apk/FilimeHome-2.0-Phase3.apk --previous-apk previous-apk/FilimeHome-2.0-android15-universal.apk --expected-sdk 35 --expected-version-code 6 --verify-fresh-install --catalog-fixture backend-audit/live-catalog.json && python3 scripts/android_live_media.py
+          emulator-options: -no-window -gpu swiftshader_indirect -audio pa -no-boot-anim -no-snapshot -camera-back none -skin 720x1600 -memory 3072
+          script: python3 scripts/android_smoke.py android-testing-apk/FilimeHome-2.0-Android15.apk --previous-apk previous-apk/FilimeHome-2.0-android15-universal.apk --expected-sdk 35 --expected-version-code 7 --verify-fresh-install --catalog-fixture backend-audit/live-catalog.json && python3 scripts/android_live_media.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
