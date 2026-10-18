@@ -25,6 +25,17 @@ def check_state(seconds=60):
         time.sleep(1)
     raise AssertionError('Production player did not become ready')
 
+def wait_catalog_loaded(seconds=180):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        for node in nodes():
+            if node.get('resource-id', '').endswith('catalog-result-count'):
+                match = re.fullmatch(r'(\d+) titles?', node.get('text', ''))
+                if match and int(match.group(1)) > 0:
+                    return int(match.group(1))
+        time.sleep(1)
+    raise AssertionError('Production catalog did not finish loading before media search')
+
 def audio_sample(name, seconds):
     path = OUT / (name + '.wav')
     try:
@@ -61,7 +72,7 @@ try:
     media = json.loads(Path('backend-audit/approved-media.json').read_text())
     assert re.fullmatch(r'[A-Za-z0-9 ]{3,45}', media['query']), 'Unsafe Android input query'
     adb('logcat', '-c')
-    restart();tap('Explore');tap('Search movie catalog');adb('shell','input','text',media['query'].replace(' ', '%s'));adb('shell','input','keyevent','4')
+    restart();tap('Explore');wait_catalog_loaded();tap('Search movie catalog');adb('shell','input','text',media['query'].replace(' ', '%s'));adb('shell','input','keyevent','4')
     scroll_to('View ' + media['title']);tap('View ' + media['title']);wait(media['title']);scroll_to('Watch Now');tap('Watch Now');check_state()
     tap('Play / Pause');advancing();native_video_evidence();record('Production real-catalog MP4 rendered playback advances')
     tap('Play / Pause');before=position();time.sleep(2);assert abs(position()-before)<=1

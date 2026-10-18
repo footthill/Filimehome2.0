@@ -73,6 +73,10 @@ jobs:
           pactl load-module module-null-sink sink_name=filimehome rate=48000 channels=2
           pactl set-default-sink filimehome
           pactl set-default-source filimehome.monitor
+          pactl load-module module-native-protocol-tcp listen=127.0.0.1 auth-ip-acl=127.0.0.1
+          pactl -s tcp:127.0.0.1:4713 info
+          echo 'PULSE_SERVER=tcp:127.0.0.1:4713' >> "$GITHUB_ENV"
+          echo 'QEMU_PA_SERVER=tcp:127.0.0.1:4713' >> "$GITHUB_ENV"
       - run: npm ci
       - run: npm ci --prefix mobile
       - name: Validate and configure the existing public Supabase project
