@@ -27,11 +27,13 @@ def check_state(seconds=60):
 
 def audio_sample(name, seconds):
     path = OUT / (name + '.wav')
-    subprocess.run(['ffmpeg', '-nostdin', '-y', '-loglevel', 'error', '-f', 'pulse', '-i', 'filimehome.monitor',
-                    '-t', str(seconds), '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', str(path)], check=True, timeout=seconds + 20)
-    with wave.open(str(path), 'rb') as wav:
-        samples = array.array('h', wav.readframes(wav.getnframes()))
-    path.unlink()  # Keep metrics, not excerpts of the owner's film, in public artifacts.
+    try:
+        subprocess.run(['ffmpeg', '-nostdin', '-y', '-loglevel', 'error', '-f', 'pulse', '-i', 'filimehome.monitor',
+                        '-t', str(seconds), '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', str(path)], check=True, timeout=seconds + 20)
+        with wave.open(str(path), 'rb') as wav:
+            samples = array.array('h', wav.readframes(wav.getnframes()))
+    finally:
+        path.unlink(missing_ok=True)  # Keep metrics only, including on capture failures.
     assert samples, 'Emulator audio capture returned no PCM samples'
     return {'peak': max(abs(value) for value in samples), 'rms': math.sqrt(sum(value * value for value in samples) / len(samples))}
 
@@ -74,7 +76,7 @@ try:
     scroll_to('Downloads');tap('Downloads');scroll_to('Play offline');tap('Play offline');check_state();tap('Play / Pause');advancing();record('Production downloaded MP4 native playback')
     adb('shell','input','keyevent','4');scroll_to('Save to My Files');tap('Save to My Files')
     # Android document picker defaults to Downloads; enter a unique destination name.
-    wait('SAVE');tap('SAVE');wait('Movie saved',timeout=120);adb('shell','input','keyevent','4')
+    wait('SAVE');tap('SAVE');wait('Movie saved',timeout=120);dismiss_alert('Movie saved')
     exported=adb('shell','find','/sdcard/Download','-name','*.mp4').strip()
     assert exported, 'Saved movie missing from user-accessible Downloads'
     size=adb('shell','stat','-c','%s',exported.splitlines()[0]).strip();assert int(size)>12
@@ -85,7 +87,7 @@ try:
         results.append({'test': 'External video app', 'result': 'unavailable on emulator; in-app downloaded playback passed'})
         (OUT / 'results.json').write_text(json.dumps(results, indent=2))
         print('LIMITATION: emulator has no external video app; the app reports this visibly.', flush=True)
-        adb('shell', 'input', 'keyevent', '4')
+        dismiss_alert('Open movie')
     else:
         assert 'video/mp4' in foreground or 'resolver' in foreground.lower(), 'Android did not handle the saved-file view intent'
         record('Completed accessible movie opens with Android video intent')

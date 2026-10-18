@@ -78,6 +78,17 @@ def scroll_to(label):
     if find(label) is not None: return
     raise AssertionError('Missing scrolled control: '+label)
 
+def dismiss_alert(label):
+    # RN 0.81 Alert.alert defaults to cancelable:false and a single OK button.
+    # Back leaves that modal open, so acknowledge it and verify it disappears.
+    wait(label)
+    tap('OK')
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if find(label) is None: return
+        time.sleep(0.2)
+    raise AssertionError('Alert did not close after OK: ' + label)
+
 def open_title(title):
     # Home's bounded featured cards are enough; Explore gives exact search for all fixtures.
     tap('Explore'); tap('Search movie catalog')
@@ -136,8 +147,8 @@ try:
         adb('shell','input','keyevent','4')
         wait('Ready to play');record(title+' native playback pause seek fullscreen')
     for title in ['Denied','Expired']:
-        restart();open_title(title);scroll_to('Watch Now');tap('Watch Now');wait('Playback unavailable');adb('shell','input','keyevent','4')
-        scroll_to('Download authorized MP4');tap('Download authorized MP4');wait('Download unavailable');adb('shell','input','keyevent','4')
+        restart();open_title(title);scroll_to('Watch Now');tap('Watch Now');dismiss_alert('Playback unavailable')
+        scroll_to('Download authorized MP4');tap('Download authorized MP4');dismiss_alert('Download unavailable')
         record(title+' rights/source gate')
     restart();open_title('Retry');scroll_to('Watch Now');tap('Watch Now');wait('Playback failed')
     context=ssl.create_default_context(cafile='media-fixtures/ca.pem')
