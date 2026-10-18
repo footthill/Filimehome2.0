@@ -17,4 +17,13 @@ run(tools/'d8', '--lib', android, '--output', out, *classes.rglob('*.class'))
 run(tools/'aapt2', 'link', '-I', android, '--manifest', root/'AndroidManifest.xml', '-o', out/'unsigned.apk')
 with zipfile.ZipFile(out/'unsigned.apk', 'a') as apk: apk.write(out/'classes.dex', 'classes.dex')
 run(tools/'zipalign', '-f', '4', out/'unsigned.apk', out/'aligned.apk')
-run(tools/'apksigner', 'sign', '--ks', 'mobile/android/app/debug.keystore', '--ks-key-alias', 'androiddebugkey', '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', out/'snapshot.apk', out/'aligned.apk')
+# Binary-only verification does not run Expo prebuild. This helper instruments
+# its own test package, so it can use a separate disposable test signing key.
+keystore = Path('mobile/android/app/debug.keystore')
+if not keystore.exists():
+    keystore = out/'snapshot.keystore'
+    if not keystore.exists():
+        run('keytool', '-genkeypair', '-noprompt', '-keystore', keystore,
+            '-storepass', 'android', '-keypass', 'android', '-alias', 'androiddebugkey',
+            '-dname', 'CN=FilimeHome Emulator QA', '-keyalg', 'RSA', '-keysize', '2048', '-validity', '2')
+run(tools/'apksigner', 'sign', '--ks', keystore, '--ks-key-alias', 'androiddebugkey', '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', out/'snapshot.apk', out/'aligned.apk')
