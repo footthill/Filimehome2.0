@@ -65,26 +65,10 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install explicit Android build tools
         run: sdkmanager 'build-tools;36.0.0' 'platforms;android-36'
-      - name: Prepare real media inspection and emulator audio capture
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg pulseaudio
-          pulseaudio --start --exit-idle-time=-1
-          pactl load-module module-null-sink sink_name=filimehome rate=48000 channels=2
-          pactl set-default-sink filimehome
-          pactl set-default-source filimehome.monitor
-          pactl load-module module-native-protocol-tcp listen=127.0.0.1 auth-ip-acl=127.0.0.1
-          pactl -s tcp:127.0.0.1:4713 info
-          echo 'PULSE_SERVER=tcp:127.0.0.1:4713' >> "$GITHUB_ENV"
-          echo 'QEMU_PA_SERVER=tcp:127.0.0.1:4713' >> "$GITHUB_ENV"
       - run: npm ci
       - run: npm ci --prefix mobile
       - name: Validate and configure the existing public Supabase project
         run: node scripts/configure_public_backend.mjs
-      - name: Test real catalog, categories, search and direct details without database writes
-        run: node --import tsx scripts/test_live_catalog.mjs
-      - name: Verify website link rules and owner-approved MP4 video and audio tracks
-        run: python3 scripts/functional_preflight.py
       - run: npm run typecheck --prefix mobile
       - run: npx expo install --check
         working-directory: mobile
@@ -134,6 +118,70 @@ jobs:
           name: FilimeHome-2.0-Android15-APK
           path: android-testing-apk/
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-release-build-evidence
+          path: android-evidence/
+
+  live-verification:
+    name: Live catalog and Android verification (separate from APK build)
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      QEMU_AUDIO_DRV: pa
+      EXPO_PUBLIC_MEDIA_CONTRACT: ${{ vars.EXPO_PUBLIC_MEDIA_CONTRACT }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: Install explicit Android build tools
+        run: sdkmanager 'build-tools;36.0.0' 'platforms;android-36'
+      - run: npm ci
+      - name: Validate and configure the existing public Supabase project
+        run: node scripts/configure_public_backend.mjs
+      - uses: actions/download-artifact@v4
+        with:
+          name: FilimeHome-2.0-Android15-APK
+          path: android-testing-apk/
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: filimehome-android15-universal-apk
+          run-id: 38073572979
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: previous-apk
+      - name: Prepare real media inspection and emulator audio capture
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=filimehome rate=48000 channels=2
+          pactl set-default-sink filimehome
+          pactl set-default-source filimehome.monitor
+          pactl load-module module-native-protocol-tcp listen=127.0.0.1 auth-ip-acl=127.0.0.1
+          pactl -s tcp:127.0.0.1:4713 info
+          echo 'PULSE_SERVER=tcp:127.0.0.1:4713' >> "$GITHUB_ENV"
+          echo 'QEMU_PA_SERVER=tcp:127.0.0.1:4713' >> "$GITHUB_ENV"
+      - name: Test real catalog, categories, search and direct details without database writes
+        run: node --import tsx scripts/test_live_catalog.mjs
+      - name: Verify website link rules and owner-approved MP4 video and audio tracks
+        run: python3 scripts/functional_preflight.py
       - name: Enable emulator hardware acceleration
         run: sudo chmod a+rw /dev/kvm
       - name: Build emulator-only live UI snapshot helper
