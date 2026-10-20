@@ -11,6 +11,7 @@ function backend(rows, failure = null) {
       assert.equal(table, 'moviesv2');
       let id;
       const query = {
+        abortSignal() { return query; },
         select(value) { assert.equal(value, '*'); return query; },
         eq(field, value) { calls.push([field, value]); if (field === 'id') id = value; return query; },
         order(field) { assert.equal(field, 'id'); return query; },
@@ -62,7 +63,7 @@ function rightsBackend(failure = null, rights = []) {
   return { from(table) {
     if (table === 'moviesv2') return metadata.from(table);
     assert.equal(table, 'movie_media_rights');
-    const q = { select() { return q; }, eq() { return q; }, order() { return q; },
+    const q = { abortSignal() { return q; }, select() { return q; }, eq() { return q; }, order() { return q; },
       range() { return Promise.resolve({ data: failure ? null : rights, error: failure }); } };
     return q;
   } };
@@ -74,6 +75,24 @@ test('media contract outages preserve real browsing and fail closed for stale gr
     assert.equal(canStream(movie), false); assert.equal(canDownload(movie), false);
     assert.match(movie.media_availability_error, /could not be verified/);
   }
+});
+
+test('stalled catalog and details requests time out even when transport ignores abort', async () => {
+  let signal;
+  const query = { select() { return this; }, eq() { return this; }, order() { return this; },
+    abortSignal(value) { signal = value; return this; },
+    range() { return new Promise(() => {}); }, maybeSingle() { return new Promise(() => {}); } };
+  const service = createCatalog({ from: () => query }, { timeoutMs: 10 });
+  await assert.rejects(service.list(), /Movie catalog timed out/);
+  assert.equal(signal.aborted, true);
+  await assert.rejects(service.get('real'), /Movie details timed out/);
+  assert.equal(signal.aborted, true);
+});
+
+test('catalog errors include real HTTP status and backend error code', async () => {
+  const query = { select() { return this; }, eq() { return this; }, order() { return this; }, abortSignal() { return this; },
+    range: async () => ({ status: 401, error: { code: 'PGRST301', message: 'Invalid JWT' } }) };
+  await assert.rejects(createCatalog({ from: () => query }).list(), /HTTP 401, PGRST301.*Invalid JWT/);
 });
 test('sidecar grants are authoritative and absent rows never reuse inline permissions', async () => {
   const blocked = await createCatalog(rightsBackend(), { mediaContract: 'rights-v1' }).get('approved');

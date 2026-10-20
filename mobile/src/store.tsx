@@ -4,13 +4,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session } from '@supabase/supabase-js';
 import type { Movie } from '../../src/types';
 import { catalog, requireBackend, supabase } from './backend';
+import { withDeadline } from '../../shared/deadline';
 
 export type History = { movie_id: string; episode_id: string; position: number; duration: number; updated_at: string };
 export type Saved = { movie_id: string; kind: 'favorite' | 'watchlist' };
 type Store = {
   movies: Movie[]; loading: boolean; error: string; session: Session | null; authReady: boolean;
   saved: Saved[]; history: History[]; libraryError: string;
-  reload: () => Promise<void>; reloadLibrary: () => Promise<void>;
+  refreshing: boolean; reload: (refresh?: boolean) => Promise<void>; reloadLibrary: () => Promise<void>;
   toggleSaved: (movie: Movie, kind: Saved['kind']) => Promise<void>;
   saveProgress: (movieId: string, episodeId: string, position: number, duration: number) => Promise<void>;
 };
@@ -20,6 +21,8 @@ const catalogCache = 'filimehome.catalog.v2';
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const loadGeneration = useRef(0);
   const [error, setError] = useState('');
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -29,23 +32,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const sessionRef = useRef(session);
   sessionRef.current = session;
 
-  const reload = useCallback(async () => {
-    setLoading(true); setError('');
+  const reload = useCallback(async (refresh = false) => {
+    const generation = ++loadGeneration.current;
+    setLoading(true); setRefreshing(refresh); setError('');
     try {
       const data = await catalog.list();
+      if (generation !== loadGeneration.current) return;
       setMovies(data);
-      // Cache quota/write failures must not replace a successfully loaded catalog
-      // with an older (or empty) snapshot in the network-error fallback below.
-      try { await AsyncStorage.setItem(catalogCache, JSON.stringify(data)); }
-      catch { /* Current network metadata remains usable without a disk cache. */ }
+      // Persistence must never hold the catalog UI in a loading state.
+      void AsyncStorage.setItem(catalogCache, JSON.stringify(data)).catch(() => {});
     } catch (e) {
+      if (generation !== loadGeneration.current) return;
       setError(e instanceof Error ? e.message : 'Unable to load movies');
+      setLoading(false); setRefreshing(false);
       // Cached metadata lets authorized downloaded titles remain discoverable offline.
       try {
-        const cached = JSON.parse(await AsyncStorage.getItem(catalogCache) || '[]');
-        if (Array.isArray(cached)) setMovies(cached);
+        const cached = JSON.parse(await withDeadline(() => AsyncStorage.getItem(catalogCache), 1000, 'Saved catalog') || '[]');
+        if (generation === loadGeneration.current && Array.isArray(cached)) setMovies(cached);
       } catch { /* Leave existing in-memory catalog available. */ }
-    } finally { setLoading(false); }
+    } finally { if (generation === loadGeneration.current) { setLoading(false); setRefreshing(false); } }
   }, []);
 
   const reloadLibrary = useCallback(async () => {
@@ -110,7 +115,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (error) { setLibraryError('Playback progress could not sync: ' + error.message); return; }
     setHistory(previous => [row, ...previous.filter(h => h.movie_id !== movieId || h.episode_id !== episodeId)]);
   };
-  return <Context.Provider value={{ movies, loading, error, session, authReady, saved, history, libraryError, reload, reloadLibrary, toggleSaved, saveProgress }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ movies, loading, refreshing, error, session, authReady, saved, history, libraryError, reload, reloadLibrary, toggleSaved, saveProgress }}>{children}</Context.Provider>;
 }
 export function useStore() {
   const context = useContext(Context);

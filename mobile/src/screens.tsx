@@ -79,7 +79,7 @@ function CatalogStatus() {
 }
 export function HomeScreen() {
   const paddingBottom = useTabContentPadding();
-  const { movies, history, saved, loading, reload, libraryError } = useStore();
+  const { movies, history, saved, refreshing, reload, libraryError } = useStore();
   const navigation = useNavigation<Navigation>();
   const { width } = useWindowDimensions();
   const banners = useMemo(() => {
@@ -97,7 +97,7 @@ export function HomeScreen() {
   const series = useMemo(() => movies.filter(m => m.type === 'tv').slice(0, 12), [movies]);
   const continuing = useMemo(() => history.filter(h => h.position > 0 && h.position < h.duration - 10), [history]);
   const cardWidth = (width - 44) / 2;
-  return <ScrollView style={s.screen} contentContainerStyle={{ gap: 28, paddingTop: 16, paddingBottom }} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.gold} />}>
+  return <ScrollView style={s.screen} contentContainerStyle={{ gap: 28, paddingTop: 16, paddingBottom }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reload(true)} tintColor={colors.gold} />}>
     <View style={{ paddingHorizontal: 16 }}><WebsiteLinks /></View>
     <CatalogStatus />
     {!!banners.length && <View style={{ paddingHorizontal: 16, gap: 16 }}><View style={{ flexDirection: 'row', gap: 12 }}>{banners.slice(0, 2).map(movie => <Poster key={movie.id} movie={movie} width={cardWidth} variant="featured" />)}</View>{banners[2] && <Poster movie={banners[2]} width={width - 32} variant="horizontal" />}</View>}
@@ -112,14 +112,14 @@ export function HomeScreen() {
 }
 export function NarratorsScreen() {
   const paddingBottom = useTabContentPadding();
-  const { movies, loading, reload } = useStore();
+  const { movies, loading, refreshing, reload } = useStore();
   const navigation = useNavigation<Navigation>();
   const narrators = useMemo(() => {
     const counts = new Map<string, number>();
     for (const movie of movies) if (movie.narrator.trim()) counts.set(movie.narrator, (counts.get(movie.narrator) || 0) + 1);
     return [...counts].sort(([a], [b]) => a.localeCompare(b));
   }, [movies]);
-  return <FlatList style={s.screen} contentContainerStyle={[s.content, { paddingBottom }]} data={narrators} keyExtractor={([name]) => name} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.gold} />}
+  return <FlatList style={s.screen} contentContainerStyle={[s.content, { paddingBottom }]} data={narrators} keyExtractor={([name]) => name} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reload(true)} tintColor={colors.gold} />}
     ListHeaderComponent={<View style={{ gap: 16 }}><Text style={s.title}>Abasobanuzi</Text><Text style={s.muted}>Browse movies by narrator</Text><WebsiteLinks /><CatalogStatus /></View>}
     ListEmptyComponent={movies.length > 0 ? <Text style={s.muted}>No narrators are listed for these titles.</Text> : null}
     renderItem={({ item: [name, count] }) => <Pressable accessibilityRole="button" accessibilityLabel={'Browse ' + name} testID={'narrator-' + name} onPress={() => navigation.navigate('Main', { screen: 'Search', params: { narrator: name } })} style={[s.card, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}><Ionicons name="mic-outline" size={24} color={colors.brand} /><View style={{ flex: 1 }}><Text style={s.heading}>{name}</Text><Text style={s.muted}>{count} {count === 1 ? 'title' : 'titles'}</Text></View><Ionicons name="chevron-forward" size={20} color={colors.gold} /></Pressable>} />;
@@ -143,7 +143,7 @@ export function ExploreScreen({ route }: BottomTabScreenProps<TabStack, 'Search'
 }
 export function CatalogScreen({ type, search = false, narrator }: { type?: 'movie' | 'tv'; search?: boolean; narrator?: string }) {
   const paddingBottom = useTabContentPadding();
-  const { movies, loading, reload } = useStore();
+  const { movies, loading, refreshing, reload } = useStore();
   const [query, setQuery] = useState(''); const [genre, setGenre] = useState('');
   // A narrator selection is a fresh browse action, not another constraint on an old search.
   useEffect(() => { setQuery(''); setGenre(''); }, [narrator]);
@@ -157,7 +157,7 @@ export function CatalogScreen({ type, search = false, narrator }: { type?: 'movi
   return <FlatList key={columns} testID="catalog-list" style={s.screen} numColumns={columns} data={results} keyExtractor={m => m.id}
     initialNumToRender={columns * 4} maxToRenderPerBatch={columns * 4} windowSize={7}
     contentContainerStyle={{ padding: 16, gap: 18, paddingBottom }} columnWrapperStyle={{ gap: 16 }}
-    keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} tintColor={colors.brand} />}
+    keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reload(true)} tintColor={colors.brand} />}
     ListHeaderComponent={<View style={{ gap: 18, paddingBottom: 18 }}><View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 12 }}><Text style={s.title}>{search ? 'Explore' : type === 'tv' ? 'Series' : 'Movies'}</Text>{movies.length > 0 && <Text testID="catalog-result-count" accessibilityLiveRegion="polite" style={s.muted}>{results.length} {results.length === 1 ? 'title' : 'titles'}</Text>}</View><CatalogLinks onAllTitles={clearFilters} /><WebsiteLinks />{narrator && <View style={s.card}><Text style={s.text}>Narrator: {narrator}</Text><ClearNarrator /></View>}
       <TextInput testID="catalog-search-input" accessibilityLabel="Search movie catalog" placeholder="Titles, narrators, genres…" placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} style={s.input} returnKeyType="search" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>{['', ...categories].map(g => <Pressable key={g} accessibilityRole="button" accessibilityLabel={'Filter category ' + (g || 'All')} accessibilityState={{ selected: genre === g }} style={[s.chip, genre === g && { borderColor: colors.gold }]} onPress={() => setGenre(g)}><Text style={s.text}>{g || 'All'}</Text></Pressable>)}</ScrollView><CatalogStatus />
